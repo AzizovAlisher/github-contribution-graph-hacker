@@ -434,6 +434,95 @@ class StreamlitGitHubHacker:
             
         except Exception as e:
             return {"error": str(e)}
+    
+    def get_available_git_configs(self) -> Dict[str, Any]:
+        """Get available Git configurations (global, local, system)"""
+        configs = {}
+        
+        try:
+            # Global config
+            success, global_name = self._run_git_command(['git', 'config', '--global', 'user.name'])
+            success2, global_email = self._run_git_command(['git', 'config', '--global', 'user.email'])
+            if success and success2:
+                configs['global'] = {
+                    'name': global_name,
+                    'email': global_email,
+                    'scope': 'Global (all repositories)'
+                }
+            
+            # Local config (current repository)
+            success, local_name = self._run_git_command(['git', 'config', '--local', 'user.name'])
+            success2, local_email = self._run_git_command(['git', 'config', '--local', 'user.email'])
+            if success and success2:
+                configs['local'] = {
+                    'name': local_name,
+                    'email': local_email,
+                    'scope': 'Local (this repository only)'
+                }
+            
+            # System config
+            success, system_name = self._run_git_command(['git', 'config', '--system', 'user.name'])
+            success2, system_email = self._run_git_command(['git', 'config', '--system', 'user.email'])
+            if success and success2:
+                configs['system'] = {
+                    'name': system_name,
+                    'email': system_email,
+                    'scope': 'System (all users)'
+                }
+            
+            return configs
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def set_git_config(self, name: str, email: str, scope: str = 'local') -> tuple[bool, str]:
+        """Set Git configuration for specified scope"""
+        try:
+            # Set user name
+            success1, output1 = self._run_git_command(['git', 'config', f'--{scope}', 'user.name', name])
+            # Set user email  
+            success2, output2 = self._run_git_command(['git', 'config', f'--{scope}', 'user.email', email])
+            
+            if success1 and success2:
+                return True, f"Git config set successfully for {scope} scope"
+            else:
+                return False, f"Failed to set config: {output1} {output2}"
+                
+        except Exception as e:
+            return False, str(e)
+    
+    def get_common_git_accounts(self) -> List[Dict[str, str]]:
+        """Get common Git account configurations from git config history"""
+        accounts = []
+        
+        try:
+            # Try to get recent commit authors as potential accounts
+            success, log_output = self._run_git_command([
+                'git', 'log', '--pretty=format:%an|%ae', '--all', '-n', '50'
+            ])
+            
+            if success:
+                seen_accounts = set()
+                for line in log_output.split('\n'):
+                    if '|' in line:
+                        name, email = line.split('|', 1)
+                        account_key = f"{name}|{email}"
+                        if account_key not in seen_accounts and name.strip() and email.strip():
+                            seen_accounts.add(account_key)
+                            accounts.append({
+                                'name': name.strip(),
+                                'email': email.strip(),
+                                'source': 'Git History'
+                            })
+                            
+                            # Limit to 10 most recent unique accounts
+                            if len(accounts) >= 10:
+                                break
+            
+            return accounts
+            
+        except Exception as e:
+            return []
 
 def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.Figure:
     """Create a visual representation of the contribution graph"""
@@ -1017,15 +1106,73 @@ def main():
             else:
                 st.error("Could not get repository details")
         
-        # Quick Actions
+        # Account Management
         st.sidebar.markdown("---")
+        st.sidebar.markdown("**👤 Account Management:**")
+        
+        # Account switching
+        with st.sidebar.expander("🔄 Switch Git Account"):
+            # Get available configurations
+            available_configs = hacker.get_available_git_configs()
+            common_accounts = hacker.get_common_git_accounts()
+            
+            if available_configs and 'error' not in available_configs:
+                st.markdown("**Available Configurations:**")
+                for scope, config in available_configs.items():
+                    if st.button(f"Use {scope.title()}: {config['name']}", key=f"use_{scope}"):
+                        success, message = hacker.set_git_config(
+                            config['name'], 
+                            config['email'], 
+                            'local'  # Always set as local to avoid affecting other repos
+                        )
+                        if success:
+                            st.success(f"✅ Switched to {config['name']}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+            
+            if common_accounts:
+                st.markdown("**Recent Git History Accounts:**")
+                for i, account in enumerate(common_accounts[:5]):  # Show top 5
+                    if st.button(f"{account['name']} <{account['email']}>", key=f"history_{i}"):
+                        success, message = hacker.set_git_config(
+                            account['name'],
+                            account['email'],
+                            'local'
+                        )
+                        if success:
+                            st.success(f"✅ Switched to {account['name']}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+            
+            # Manual account setup
+            st.markdown("**Manual Setup:**")
+            with st.form("git_config_form"):
+                new_name = st.text_input("Git Name", placeholder="Your Name")
+                new_email = st.text_input("Git Email", placeholder="your@email.com")
+                config_scope = st.selectbox("Scope", ["local", "global"], 
+                                          help="Local: This repo only, Global: All repos")
+                
+                if st.form_submit_button("💾 Set Git Config"):
+                    if new_name and new_email:
+                        success, message = hacker.set_git_config(new_name, new_email, config_scope)
+                        if success:
+                            st.success(f"✅ Git config updated!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+                    else:
+                        st.error("Please fill in both name and email")
+        
+        # Quick Actions
         st.sidebar.markdown("**🔧 Quick Actions:**")
         
         if st.sidebar.button("🔄 Refresh Repository Info"):
             st.rerun()
         
         if st.sidebar.button("🧪 Test Git Configuration"):
-            with st.sidebar.spinner("Testing configuration..."):
+            with st.spinner("Testing configuration..."):
                 # Test basic git commands
                 test_results = []
                 
