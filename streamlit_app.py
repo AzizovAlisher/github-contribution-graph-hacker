@@ -159,6 +159,30 @@ class StreamlitGitHubHacker:
         days_since_monday = start_date.weekday()
         start_date = start_date - datetime.timedelta(days=days_since_monday)
         return start_date
+    
+    def generate_multi_year_commits(self, years: int, min_commits: int = 0, max_commits: int = 3, frequency: float = 0.7) -> List[Dict]:
+        """Generate commits data for multiple years"""
+        commits_data = []
+        weeks_per_year = 52
+        total_weeks = years * weeks_per_year
+        
+        for x in range(total_weeks):
+            for y in range(7):   # 7 days
+                if random.random() < frequency:
+                    num_commits = random.randint(min_commits, max_commits)
+                    for _ in range(num_commits):
+                        start_date = self.get_start_of_year(total_weeks)
+                        target_date = start_date + datetime.timedelta(weeks=x, days=y)
+                        
+                        if target_date <= datetime.datetime.now():
+                            commits_data.append({
+                                'x': x,
+                                'y': y,
+                                'date': target_date,
+                                'date_str': self.get_date_string(target_date)
+                            })
+        
+        return commits_data
 
     def mark_commit(self, x: int, y: int, push: bool = False) -> tuple[bool, str]:
         """Make a commit at specific X,Y coordinates on the contribution graph"""
@@ -297,10 +321,8 @@ class StreamlitGitHubHacker:
         except Exception as e:
             return {"error": str(e)}
 
-def create_contribution_graph(commits_data: List[Dict]) -> go.Figure:
+def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.Figure:
     """Create a visual representation of the contribution graph"""
-    # Create a grid for the contribution graph (52 weeks x 7 days)
-    weeks = 52
     days = 7
     
     # Initialize grid
@@ -334,6 +356,361 @@ def create_contribution_graph(commits_data: List[Dict]) -> go.Figure:
     )
     
     return fig
+
+def create_pattern_preview(pattern: List[List[int]]) -> go.Figure:
+    """Create a visual preview of a pattern"""
+    if not pattern or not pattern[0]:
+        return go.Figure()
+    
+    # Create heatmap for pattern preview
+    fig = go.Figure(data=go.Heatmap(
+        z=pattern,
+        colorscale='Greens',
+        showscale=True,
+        hoverongaps=False,
+        hovertemplate='Week: %{x}<br>Day: %{y}<br>Commits: %{z}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title="Pattern Preview",
+        xaxis_title="Weeks",
+        yaxis_title="Days of Week",
+        yaxis=dict(
+            tickmode='array',
+            tickvals=list(range(7)),
+            ticktext=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        ),
+        height=250,
+        width=min(800, len(pattern[0]) * 15 + 100)
+    )
+    
+    return fig
+
+def text_to_pattern(text: str, width: int = 50) -> List[List[int]]:
+    """Convert text to a pattern suitable for GitHub contribution graph"""
+    # Simple character mapping for basic ASCII art
+    char_patterns = {
+        'A': [
+            [0,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [0,0,0,0,0]
+        ],
+        'B': [
+            [1,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,0]
+        ],
+        'C': [
+            [0,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,1],
+            [0,1,1,1,0]
+        ],
+        'D': [
+            [1,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,0]
+        ],
+        'E': [
+            [1,1,1,1,1],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,1,1,1,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,1,1,1,1]
+        ],
+        'F': [
+            [1,1,1,1,1],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,1,1,1,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0]
+        ],
+        'G': [
+            [0,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,0],
+            [1,0,1,1,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [0,1,1,1,0]
+        ],
+        'H': [
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1]
+        ],
+        'I': [
+            [1,1,1,1,1],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [1,1,1,1,1]
+        ],
+        'J': [
+            [1,1,1,1,1],
+            [0,0,0,1,0],
+            [0,0,0,1,0],
+            [0,0,0,1,0],
+            [0,0,0,1,0],
+            [1,0,0,1,0],
+            [0,1,1,0,0]
+        ],
+        'K': [
+            [1,0,0,0,1],
+            [1,0,0,1,0],
+            [1,0,1,0,0],
+            [1,1,0,0,0],
+            [1,0,1,0,0],
+            [1,0,0,1,0],
+            [1,0,0,0,1]
+        ],
+        'L': [
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,1,1,1,1]
+        ],
+        'M': [
+            [1,0,0,0,1],
+            [1,1,0,1,1],
+            [1,0,1,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1]
+        ],
+        'N': [
+            [1,0,0,0,1],
+            [1,1,0,0,1],
+            [1,0,1,0,1],
+            [1,0,0,1,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1]
+        ],
+        'O': [
+            [0,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [0,1,1,1,0]
+        ],
+        'P': [
+            [1,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [1,0,0,0,0]
+        ],
+        'Q': [
+            [0,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,1,0,1],
+            [1,0,0,1,1],
+            [0,1,1,1,1]
+        ],
+        'R': [
+            [1,1,1,1,0],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,1,1,1,0],
+            [1,0,1,0,0],
+            [1,0,0,1,0],
+            [1,0,0,0,1]
+        ],
+        'S': [
+            [0,1,1,1,1],
+            [1,0,0,0,0],
+            [1,0,0,0,0],
+            [0,1,1,1,0],
+            [0,0,0,0,1],
+            [0,0,0,0,1],
+            [1,1,1,1,0]
+        ],
+        'T': [
+            [1,1,1,1,1],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0]
+        ],
+        'U': [
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [0,1,1,1,0]
+        ],
+        'V': [
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [0,1,0,1,0],
+            [0,0,1,0,0]
+        ],
+        'W': [
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [1,0,1,0,1],
+            [1,1,0,1,1],
+            [1,0,0,0,1]
+        ],
+        'X': [
+            [1,0,0,0,1],
+            [0,1,0,1,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,1,0,1,0],
+            [1,0,0,0,1]
+        ],
+        'Y': [
+            [1,0,0,0,1],
+            [1,0,0,0,1],
+            [0,1,0,1,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0],
+            [0,0,1,0,0]
+        ],
+        'Z': [
+            [1,1,1,1,1],
+            [0,0,0,0,1],
+            [0,0,0,1,0],
+            [0,0,1,0,0],
+            [0,1,0,0,0],
+            [1,0,0,0,0],
+            [1,1,1,1,1]
+        ],
+        ' ': [
+            [0,0,0],
+            [0,0,0],
+            [0,0,0],
+            [0,0,0],
+            [0,0,0],
+            [0,0,0],
+            [0,0,0]
+        ],
+        '!': [
+            [1],
+            [1],
+            [1],
+            [1],
+            [1],
+            [0],
+            [1]
+        ],
+        '?': [
+            [0,1,1,1,0],
+            [1,0,0,0,1],
+            [0,0,0,0,1],
+            [0,0,0,1,0],
+            [0,0,1,0,0],
+            [0,0,0,0,0],
+            [0,0,1,0,0]
+        ],
+        '♥': [
+            [0,1,1,0,1,1,0],
+            [1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1],
+            [0,1,1,1,1,1,0],
+            [0,0,1,1,1,0,0],
+            [0,0,0,1,0,0,0],
+            [0,0,0,0,0,0,0]
+        ]
+    }
+    
+    text = text.upper().strip()
+    if not text:
+        return []
+    
+    # Calculate pattern dimensions
+    total_width = 0
+    max_height = 7
+    
+    # Calculate total width needed
+    for char in text:
+        if char in char_patterns:
+            total_width += len(char_patterns[char][0]) + 1  # +1 for spacing
+        else:
+            total_width += 4  # Default width for unknown characters
+    
+    if total_width > width:
+        # Truncate text if too wide
+        truncated_text = ""
+        current_width = 0
+        for char in text:
+            char_width = len(char_patterns.get(char, [[0,0,0,0]])[0]) + 1
+            if current_width + char_width <= width:
+                truncated_text += char
+                current_width += char_width
+            else:
+                break
+        text = truncated_text
+    
+    # Build the pattern
+    pattern = [[0 for _ in range(width)] for _ in range(max_height)]
+    
+    current_x = 0
+    for char in text:
+        if char in char_patterns:
+            char_pattern = char_patterns[char]
+            char_width = len(char_pattern[0])
+            
+            # Copy character pattern to main pattern
+            for y in range(min(len(char_pattern), max_height)):
+                for x in range(min(char_width, width - current_x)):
+                    if current_x + x < width:
+                        pattern[y][current_x + x] = char_pattern[y][x]
+            
+            current_x += char_width + 1  # +1 for spacing
+            
+            if current_x >= width:
+                break
+    
+    return pattern
 
 def main():
     st.set_page_config(
@@ -482,60 +859,42 @@ def main():
         # Pattern input methods
         pattern_method = st.radio(
             "Pattern Input Method",
-            ["Simple Grid", "JSON Upload", "Predefined Patterns"]
+            ["Text to Pattern", "Predefined Patterns", "Simple Grid", "JSON Upload"]
         )
         
-        if pattern_method == "Simple Grid":
-            st.subheader("Create Pattern with Grid")
+        if pattern_method == "Text to Pattern":
+            st.subheader("Generate Pattern from Text")
             
-            # Simple 7x10 grid for pattern creation
-            pattern = []
+            col1, col2 = st.columns([1, 1])
             
-            st.markdown("**Click to set commit intensity (0-4):**")
-            
-            # Create a simple pattern grid
-            grid_cols = st.columns(10)
-            pattern_grid = []
-            
-            for week in range(10):  # 10 weeks for simplicity
-                week_data = []
-                for day in range(7):
-                    key = f"grid_{week}_{day}"
-                    if key not in st.session_state:
-                        st.session_state[key] = 0
-                    
-                    with grid_cols[week]:
-                        value = st.selectbox(
-                            f"W{week}D{day}",
-                            [0, 1, 2, 3, 4],
-                            index=st.session_state[key],
-                            key=key,
-                            label_visibility="collapsed"
-                        )
-                        week_data.append(value)
-                pattern_grid.append(week_data)
-            
-            # Transpose for correct orientation
-            pattern = [[pattern_grid[week][day] for week in range(10)] for day in range(7)]
-            
-        elif pattern_method == "JSON Upload":
-            st.subheader("Upload JSON Pattern")
-            
-            pattern_text = st.text_area(
-                "Pattern JSON",
-                placeholder='[[1,0,1],[0,2,0],[1,0,1]]',
-                help="2D array where pattern[day][week] = number of commits"
-            )
-            
-            try:
-                pattern = json.loads(pattern_text) if pattern_text else []
-            except json.JSONDecodeError:
-                st.error("Invalid JSON format")
-                pattern = []
+            with col1:
+                text_input = st.text_input(
+                    "Enter text to convert to pattern",
+                    value="HELLO",
+                    help="Enter text to convert to ASCII art pattern. Supports A-Z, space, !, ?, and ♥"
+                )
                 
-        else:  # Predefined patterns
+                pattern_width = st.slider("Pattern width (weeks)", 10, 52, 30)
+                
+                if text_input:
+                    pattern = text_to_pattern(text_input, pattern_width)
+                    if pattern:
+                        st.success(f"Generated pattern: {len(pattern[0])} weeks × {len(pattern)} days")
+                    else:
+                        st.warning("Could not generate pattern from text")
+                        pattern = []
+                else:
+                    pattern = []
+            
+            with col2:
+                if pattern:
+                    fig = create_pattern_preview(pattern)
+                    st.plotly_chart(fig, use_container_width=True)
+                
+        elif pattern_method == "Predefined Patterns":
             st.subheader("Predefined Patterns")
             
+            # Fixed predefined patterns (corrected orientation)
             patterns = {
                 "Heart": [
                     [0,1,1,0,1,1,0],
@@ -563,27 +922,175 @@ def main():
                     [0,0,1,0,0],
                     [0,0,0,0,0],
                     [0,0,0,0,0]
+                ],
+                "Diamond": [
+                    [0,0,0,1,0,0,0],
+                    [0,0,1,1,1,0,0],
+                    [0,1,1,1,1,1,0],
+                    [1,1,1,1,1,1,1],
+                    [0,1,1,1,1,1,0],
+                    [0,0,1,1,1,0,0],
+                    [0,0,0,1,0,0,0]
+                ],
+                "Star": [
+                    [0,0,0,1,0,0,0],
+                    [0,1,0,1,0,1,0],
+                    [1,1,1,1,1,1,1],
+                    [0,1,1,1,1,1,0],
+                    [0,1,0,1,0,1,0],
+                    [1,0,0,1,0,0,1],
+                    [0,0,0,0,0,0,0]
+                ],
+                "Arrow": [
+                    [0,0,0,1,0,0,0],
+                    [0,0,1,1,1,0,0],
+                    [0,1,1,1,1,1,0],
+                    [1,1,1,1,1,1,1],
+                    [0,0,0,1,0,0,0],
+                    [0,0,0,1,0,0,0],
+                    [0,0,0,1,0,0,0]
                 ]
             }
             
-            selected_pattern = st.selectbox("Choose Pattern", list(patterns.keys()))
-            pattern = patterns[selected_pattern]
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                selected_pattern = st.selectbox("Choose Pattern", list(patterns.keys()))
+                pattern = patterns[selected_pattern]
+                
+                if pattern:
+                    st.info(f"Pattern size: {len(pattern[0])} weeks × {len(pattern)} days")
+            
+            with col2:
+                if pattern:
+                    fig = create_pattern_preview(pattern)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+        elif pattern_method == "Simple Grid":
+            st.subheader("Create Pattern with Interactive Grid")
+            
+            st.markdown("**Interactive Grid Creator** - Click cells to set commit intensity (0-4)")
+            
+            # Grid size controls
+            col1, col2 = st.columns(2)
+            with col1:
+                grid_weeks = st.slider("Grid width (weeks)", 5, 20, 10)
+            with col2:
+                grid_days = st.slider("Grid height (days)", 3, 7, 7)
+            
+            # Create interactive grid
+            pattern = []
+            
+            # Initialize session state for grid
+            for day in range(grid_days):
+                for week in range(grid_weeks):
+                    key = f"grid_{week}_{day}"
+                    if key not in st.session_state:
+                        st.session_state[key] = 0
+            
+            # Create grid UI
+            st.markdown("**Grid Pattern:**")
+            
+            # Create columns for each week
+            grid_cols = st.columns(grid_weeks)
+            pattern_grid = []
+            
+            for week in range(grid_weeks):
+                week_data = []
+                for day in range(grid_days):
+                    key = f"grid_{week}_{day}"
+                    
+                    with grid_cols[week]:
+                        value = st.selectbox(
+                            f"W{week}D{day}",
+                            [0, 1, 2, 3, 4],
+                            index=st.session_state[key],
+                            key=key,
+                            label_visibility="collapsed"
+                        )
+                        week_data.append(value)
+                pattern_grid.append(week_data)
+            
+            # Transpose for correct orientation (days x weeks)
+            pattern = [[pattern_grid[week][day] for week in range(grid_weeks)] for day in range(grid_days)]
+            
+            # Show preview
+            if any(any(row) for row in pattern):
+                st.subheader("Grid Preview")
+                fig = create_pattern_preview(pattern)
+                st.plotly_chart(fig, use_container_width=True)
+                
+        else:  # JSON Upload
+            st.subheader("Upload JSON Pattern")
+            
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                pattern_text = st.text_area(
+                    "Pattern JSON",
+                    placeholder='[[1,0,1,0,1],[0,2,0,2,0],[1,0,3,0,1]]',
+                    help="2D array where pattern[day][week] = number of commits",
+                    height=150
+                )
+                
+                # JSON validation and preview
+                try:
+                    if pattern_text.strip():
+                        pattern = json.loads(pattern_text)
+                        if isinstance(pattern, list) and all(isinstance(row, list) for row in pattern):
+                            st.success(f"Valid JSON pattern: {len(pattern[0]) if pattern else 0} weeks × {len(pattern)} days")
+                        else:
+                            st.error("Pattern must be a 2D array")
+                            pattern = []
+                    else:
+                        pattern = []
+                except json.JSONDecodeError as e:
+                    st.error(f"Invalid JSON format: {e}")
+                    pattern = []
+                    
+                # Sample patterns
+                st.markdown("**Sample JSON patterns:**")
+                sample_patterns = {
+                    "Simple Cross": '[[0,0,1,0,0],[0,0,1,0,0],[1,1,1,1,1],[0,0,1,0,0],[0,0,1,0,0]]',
+                    "Checkerboard": '[[1,0,1,0,1],[0,1,0,1,0],[1,0,1,0,1],[0,1,0,1,0]]',
+                    "Triangle": '[[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1]]'
+                }
+                
+                for name, sample_json in sample_patterns.items():
+                    if st.button(f"Load {name}", key=f"sample_{name}"):
+                        st.session_state.json_pattern = sample_json
+                        st.rerun()
+                
+                # Load sample if selected
+                if hasattr(st.session_state, 'json_pattern'):
+                    pattern_text = st.session_state.json_pattern
+                    pattern = json.loads(pattern_text)
+                    
+            with col2:
+                if pattern:
+                    fig = create_pattern_preview(pattern)
+                    st.plotly_chart(fig, use_container_width=True)
         
-        # Show pattern preview and execute
-        if pattern:
+        # Show pattern execution options
+        if pattern and any(any(row) for row in pattern):
+            st.markdown("---")
+            st.subheader("Execute Pattern")
+            
             col1, col2 = st.columns(2)
             
             with col1:
                 # Generate pattern commits data
                 pattern_commits = hacker.create_pattern_commits(pattern)
-                st.info(f"Pattern will create {len(pattern_commits)} commits")
+                st.info(f"Pattern will create **{len(pattern_commits)}** commits")
                 
-                if st.button("Execute Pattern", type="primary"):
+                push_pattern = st.checkbox("Push to remote after creating", value=True, key="push_pattern")
+                
+                if st.button("🎨 Execute Pattern", type="primary"):
                     if not hacker._ensure_git_repo():
                         st.error("No git repository found!")
                     else:
                         with st.spinner("Creating pattern..."):
-                            success, messages = hacker.execute_commits(pattern_commits, push_at_end=True)
+                            success, messages = hacker.execute_commits(pattern_commits, push_at_end=push_pattern)
                             
                             if success:
                                 st.success("Pattern created successfully!")
@@ -595,70 +1102,182 @@ def main():
                                     st.text(msg)
             
             with col2:
-                # Show pattern preview
+                # Show final contribution graph preview
                 if pattern_commits:
-                    fig = create_contribution_graph(pattern_commits)
+                    st.markdown("**Final Contribution Graph Preview:**")
+                    fig = create_contribution_graph(pattern_commits, weeks=max(52, len(pattern[0]) if pattern else 52))
                     st.plotly_chart(fig, use_container_width=True)
     
     with tab4:
-        st.header("Fill Entire Year")
-        st.markdown("Fill the entire past year with random commits.")
+        st.header("Fill Time Period")
+        st.markdown("Fill multiple years or a specific time period with random commits.")
+        
+        # Time period selection
+        time_period = st.radio(
+            "Select time period to fill:",
+            ["Single Year", "Multiple Years", "Custom Period"]
+        )
         
         col1, col2 = st.columns(2)
         
         with col1:
+            if time_period == "Single Year":
+                years = 1
+                st.info("📅 Filling the past 12 months (52 weeks)")
+                
+            elif time_period == "Multiple Years":
+                years = st.slider("Number of years", 1, 5, 2)
+                total_weeks = years * 52
+                st.info(f"📅 Filling the past {years} years ({total_weeks} weeks)")
+                
+            else:  # Custom Period
+                years = 1
+                custom_weeks = st.slider("Number of weeks", 1, 260, 52)  # Up to 5 years
+                years_equiv = custom_weeks / 52
+                st.info(f"📅 Filling {custom_weeks} weeks (~{years_equiv:.1f} years)")
+            
+            # Commit parameters
+            st.markdown("**Commit Parameters:**")
             min_commits = st.slider("Min commits per day", 0, 5, 0)
             max_commits = st.slider("Max commits per day", 1, 10, 3)
             frequency = st.slider("Commit frequency", 0.0, 1.0, 0.7, 0.1)
             
-            st.info(f"This will create commits on ~{int(365 * frequency)} days")
+            # Calculate estimated commits
+            if time_period == "Custom Period":
+                total_days = custom_weeks * 7
+                estimated_commits = int(total_days * frequency * (min_commits + max_commits) / 2)
+                st.info(f"📊 Estimated: ~{estimated_commits} commits on ~{int(total_days * frequency)} days")
+            else:
+                total_days = years * 365
+                estimated_commits = int(total_days * frequency * (min_commits + max_commits) / 2)
+                st.info(f"📊 Estimated: ~{estimated_commits} commits on ~{int(total_days * frequency)} days")
             
         with col2:
-            if st.button("Generate Year Preview", type="secondary"):
-                with st.spinner("Generating year preview..."):
-                    # Generate year data
-                    year_commits = []
-                    for x in range(52):  # 52 weeks
-                        for y in range(7):   # 7 days
-                            if random.random() < frequency:
-                                num_commits = random.randint(min_commits, max_commits)
-                                for _ in range(num_commits):
-                                    start_date = hacker.get_start_of_year()
-                                    target_date = start_date + datetime.timedelta(weeks=x, days=y)
-                                    
-                                    if target_date <= datetime.datetime.now():
-                                        year_commits.append({
-                                            'x': x,
-                                            'y': y,
-                                            'date': target_date,
-                                            'date_str': hacker.get_date_string(target_date)
-                                        })
+            if st.button("🔍 Generate Preview", type="secondary"):
+                with st.spinner("Generating preview..."):
+                    if time_period == "Custom Period":
+                        # Generate custom period data
+                        year_commits = []
+                        for x in range(custom_weeks):
+                            for y in range(7):   # 7 days
+                                if random.random() < frequency:
+                                    num_commits = random.randint(min_commits, max_commits)
+                                    for _ in range(num_commits):
+                                        start_date = hacker.get_start_of_year(custom_weeks)
+                                        target_date = start_date + datetime.timedelta(weeks=x, days=y)
+                                        
+                                        if target_date <= datetime.datetime.now():
+                                            year_commits.append({
+                                                'x': x,
+                                                'y': y,
+                                                'date': target_date,
+                                                'date_str': hacker.get_date_string(target_date)
+                                            })
+                    else:
+                        # Generate multi-year data
+                        year_commits = hacker.generate_multi_year_commits(
+                            years, min_commits, max_commits, frequency
+                        )
                     
                     st.session_state.year_commits = year_commits
-                    st.success(f"Generated preview with {len(year_commits)} commits")
+                    st.session_state.fill_weeks = custom_weeks if time_period == "Custom Period" else years * 52
+                    st.success(f"✅ Generated preview with **{len(year_commits)}** commits")
             
-            if st.button("Execute Year Fill", type="primary"):
+            if st.button("🚀 Execute Fill", type="primary"):
                 if not hacker._ensure_git_repo():
-                    st.error("No git repository found!")
+                    st.error("❌ No git repository found!")
                 elif 'year_commits' not in st.session_state:
-                    st.warning("Generate preview first!")
+                    st.warning("⚠️ Generate preview first!")
                 else:
-                    with st.spinner("Filling year..."):
-                        success, messages = hacker.execute_commits(
-                            st.session_state.year_commits, 
-                            push_at_end=True
-                        )
-                        
-                        if success:
-                            st.success("Year filled successfully!")
-                        else:
-                            st.error("Some commits failed")
+                    push_fill = st.checkbox("Push to remote after filling", value=True, key="push_fill")
+                    
+                    if st.button("✅ Confirm Execute", type="primary"):
+                        with st.spinner("Filling time period..."):
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            
+                            # Execute commits in batches for better performance
+                            commits = st.session_state.year_commits
+                            batch_size = 50
+                            total_batches = len(commits) // batch_size + (1 if len(commits) % batch_size else 0)
+                            
+                            all_success = True
+                            all_messages = []
+                            
+                            for i in range(0, len(commits), batch_size):
+                                batch = commits[i:i+batch_size]
+                                batch_num = i // batch_size + 1
+                                
+                                status_text.text(f"Processing batch {batch_num}/{total_batches}...")
+                                
+                                success, messages = hacker.execute_commits(batch, push_at_end=False)
+                                all_messages.extend(messages)
+                                
+                                if not success:
+                                    all_success = False
+                                
+                                progress_bar.progress(min(1.0, (i + batch_size) / len(commits)))
+                            
+                            # Push all at the end if requested
+                            if push_fill and any('✅' in msg for msg in all_messages):
+                                status_text.text("Pushing to remote...")
+                                success, push_msg = hacker._run_git_command(["git", "push"])
+                                if success:
+                                    all_messages.append("✅ All commits pushed to remote repository")
+                                else:
+                                    all_messages.append(f"❌ Push failed: {push_msg}")
+                            
+                            progress_bar.progress(1.0)
+                            status_text.text("Complete!")
+                            
+                            if all_success:
+                                st.success("🎉 Time period filled successfully!")
+                            else:
+                                st.error("⚠️ Some commits failed")
+                            
+                            with st.expander("📋 Detailed Results"):
+                                for msg in all_messages[-20:]:  # Show last 20 messages
+                                    st.text(msg)
+                                if len(all_messages) > 20:
+                                    st.info(f"... and {len(all_messages) - 20} more messages")
         
-        # Show year preview
+        # Show preview
         if 'year_commits' in st.session_state:
-            st.subheader("Year Preview")
-            fig = create_contribution_graph(st.session_state.year_commits)
+            st.markdown("---")
+            st.subheader("📊 Time Period Preview")
+            
+            commits = st.session_state.year_commits
+            fill_weeks = st.session_state.get('fill_weeks', 52)
+            
+            # Show statistics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Commits", len(commits))
+            with col2:
+                st.metric("Time Span", f"{fill_weeks} weeks")
+            with col3:
+                if commits:
+                    unique_days = len(set((c['x'], c['y']) for c in commits))
+                    st.metric("Active Days", unique_days)
+                else:
+                    st.metric("Active Days", 0)
+            with col4:
+                if commits:
+                    avg_commits = len(commits) / max(1, len(set((c['x'], c['y']) for c in commits)))
+                    st.metric("Avg/Day", f"{avg_commits:.1f}")
+                else:
+                    st.metric("Avg/Day", "0")
+            
+            # Show contribution graph
+            fig = create_contribution_graph(commits, weeks=fill_weeks)
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Show date range
+            if commits:
+                dates = [c['date'] for c in commits]
+                start_date = min(dates)
+                end_date = max(dates)
+                st.info(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
     
     with tab5:
         st.header("Manage Commits")
