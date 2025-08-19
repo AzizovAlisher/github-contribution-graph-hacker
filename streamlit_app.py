@@ -110,8 +110,8 @@ class StreamlitGitHubHacker:
     def add_commit_and_push(self, date: datetime.datetime, push: bool = True) -> tuple[bool, str]:
         """Add, commit, and optionally push changes"""
         try:
-            # Add files to staging
-            success, output = self._run_git_command(["git", "add", self.data_file])
+            # Add files to staging (force add to override .gitignore)
+            success, output = self._run_git_command(["git", "add", "-f", self.data_file])
             if not success:
                 return False, f"Failed to add files: {output}"
 
@@ -575,7 +575,17 @@ class StreamlitGitHubHacker:
                 elif "up to date" in push_status or "up-to-date" in push_status:
                     warnings.append("Repository is up to date with remote")
             
-            # Check 6: Fork detection
+            # Check 6: Data file in .gitignore
+            try:
+                with open(os.path.join(self.repo_path, '.gitignore'), 'r') as f:
+                    gitignore_content = f.read()
+                    if self.data_file in gitignore_content:
+                        issues.append(f"Data file '{self.data_file}' is ignored by .gitignore")
+                        suggestions.append(f"Remove '{self.data_file}' from .gitignore or use a different filename")
+            except FileNotFoundError:
+                pass  # No .gitignore file
+            
+            # Check 7: Fork detection
             if 'github_username' in git_config:
                 # This is a basic check - in reality you'd need GitHub API to detect forks properly
                 repo_name = git_config['github_repo']
@@ -1079,11 +1089,19 @@ def main():
     )
     
     # Data file name
+    default_data_file = st.session_state.get('data_file', 'data.json')
     data_file = st.sidebar.text_input(
         "Data File Name",
-        value="data.json",
-        help="Name of the JSON file to store commit data"
+        value=default_data_file,
+        help="Name of the JSON file to store commit data. Note: 'data.json' is in .gitignore!"
     )
+    
+    # Warning if using default data.json
+    if data_file == "data.json":
+        st.sidebar.warning("⚠️ 'data.json' is ignored by .gitignore! Consider using 'commits.json' instead.")
+        if st.sidebar.button("🔧 Use 'commits.json' instead"):
+            st.session_state.data_file = "commits.json"
+            st.rerun()
     
     # Initialize hacker
     hacker = StreamlitGitHubHacker(repo_path, data_file)
