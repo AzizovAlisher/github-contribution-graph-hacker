@@ -160,15 +160,18 @@ class StreamlitGitHubHacker:
         start_date = start_date - datetime.timedelta(days=days_since_monday)
         return start_date
     
-    def generate_multi_year_commits(self, years: int, min_commits: int = 0, max_commits: int = 3, frequency: float = 0.7) -> List[Dict]:
-        """Generate commits data for multiple years"""
+    def generate_multi_year_commits(self, years: int, min_commits: int = 0, max_commits: int = 3, frequency: float = 0.7, weekend_factor: float = 0.05) -> List[Dict]:
+        """Generate commits data for multiple years with weekend frequency adjustment"""
         commits_data = []
         weeks_per_year = 52
         total_weeks = years * weeks_per_year
         
         for x in range(total_weeks):
             for y in range(7):   # 7 days
-                if random.random() < frequency:
+                # Apply weekend frequency reduction
+                adjusted_frequency = apply_weekend_frequency(frequency, y, weekend_factor)
+                
+                if random.random() < adjusted_frequency:
                     num_commits = random.randint(min_commits, max_commits)
                     for _ in range(num_commits):
                         start_date = self.get_start_of_year(total_weeks)
@@ -213,15 +216,24 @@ class StreamlitGitHubHacker:
         else:
             return False, message
 
-    def generate_commits_data(self, num_commits: int = 100) -> List[Dict]:
+    def generate_commits_data(self, num_commits: int = 100, avoid_weekends: bool = True) -> List[Dict]:
         """Generate commit data without actually making commits"""
         commits_data = []
+        attempts = 0
+        max_attempts = num_commits * 3  # Prevent infinite loop
         
-        for i in range(num_commits):
+        while len(commits_data) < num_commits and attempts < max_attempts:
+            attempts += 1
+            
             # Random X coordinate (0-51 weeks)
             x = random.randint(0, 51)
             # Random Y coordinate (0-6 days)
             y = random.randint(0, 6)
+            
+            # If avoiding weekends, reduce probability for weekend days
+            if avoid_weekends and is_weekend_day(y):
+                if random.random() > 0.2:  # 80% chance to skip weekend days
+                    continue
             
             start_date = self.get_start_of_year()
             target_date = start_date + datetime.timedelta(weeks=x, days=y)
@@ -334,13 +346,17 @@ def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.F
         if 0 <= x < weeks and 0 <= y < days:
             grid[y][x] += 1
     
+    # Reverse the grid to match GitHub's layout (Sunday at top, Saturday at bottom)
+    grid = grid[::-1]
+    
     # Create heatmap
     fig = go.Figure(data=go.Heatmap(
         z=grid,
         colorscale='Greens',
         showscale=True,
         hoverongaps=False,
-        hovertemplate='Week: %{x}<br>Day: %{y}<br>Commits: %{z}<extra></extra>'
+        hovertemplate='Week: %{x}<br>Day: %{customdata}<br>Commits: %{z}<extra></extra>',
+        customdata=[['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][i % 7] for i in range(len(grid))]
     ))
     
     fig.update_layout(
@@ -350,7 +366,8 @@ def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.F
         yaxis=dict(
             tickmode='array',
             tickvals=list(range(7)),
-            ticktext=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'],
+            autorange='reversed'  # This ensures proper orientation
         ),
         height=300
     )
@@ -362,13 +379,17 @@ def create_pattern_preview(pattern: List[List[int]]) -> go.Figure:
     if not pattern or not pattern[0]:
         return go.Figure()
     
+    # Reverse pattern to match GitHub's layout
+    pattern_reversed = pattern[::-1]
+    
     # Create heatmap for pattern preview
     fig = go.Figure(data=go.Heatmap(
-        z=pattern,
+        z=pattern_reversed,
         colorscale='Greens',
         showscale=True,
         hoverongaps=False,
-        hovertemplate='Week: %{x}<br>Day: %{y}<br>Commits: %{z}<extra></extra>'
+        hovertemplate='Week: %{x}<br>Day: %{customdata}<br>Commits: %{z}<extra></extra>',
+        customdata=[['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][i % 7] for i in range(len(pattern_reversed))]
     ))
     
     fig.update_layout(
@@ -377,8 +398,9 @@ def create_pattern_preview(pattern: List[List[int]]) -> go.Figure:
         yaxis_title="Days of Week",
         yaxis=dict(
             tickmode='array',
-            tickvals=list(range(7)),
-            ticktext=['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            tickvals=list(range(min(7, len(pattern)))),
+            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][:len(pattern)],
+            autorange='reversed'
         ),
         height=250,
         width=min(800, len(pattern[0]) * 15 + 100)
@@ -712,6 +734,16 @@ def text_to_pattern(text: str, width: int = 50) -> List[List[int]]:
     
     return pattern
 
+def is_weekend_day(day_of_week: int) -> bool:
+    """Check if a day is weekend (Saturday=5, Sunday=6 in 0-6 system where Monday=0)"""
+    return day_of_week in [5, 6]  # Saturday and Sunday
+
+def apply_weekend_frequency(base_frequency: float, day_of_week: int, weekend_factor: float = 0.05) -> float:
+    """Apply weekend frequency reduction"""
+    if is_weekend_day(day_of_week):
+        return base_frequency * weekend_factor
+    return base_frequency
+
 def main():
     st.set_page_config(
         page_title="GitHub Contribution Graph Hacker",
@@ -817,9 +849,14 @@ def main():
             num_commits = st.number_input("Number of commits", 1, 1000, 100)
             push_random = st.checkbox("Push all at end", value=True, key="push_random")
             
+            # Weekend settings for random commits
+            st.markdown("**Weekend Settings:**")
+            avoid_weekends = st.checkbox("Avoid weekends", value=True, key="avoid_weekends_random",
+                                       help="Reduces likelihood of commits on weekends (Sat/Sun)")
+            
             if st.button("Generate Preview", type="secondary"):
                 with st.spinner("Generating preview..."):
-                    commits_data = hacker.generate_commits_data(num_commits)
+                    commits_data = hacker.generate_commits_data(num_commits, avoid_weekends)
                     st.session_state.random_commits = commits_data
                     st.success(f"Generated preview with {len(commits_data)} commits")
         
@@ -1142,6 +1179,17 @@ def main():
             max_commits = st.slider("Max commits per day", 1, 10, 3)
             frequency = st.slider("Commit frequency", 0.0, 1.0, 0.7, 0.1)
             
+            # Weekend options
+            st.markdown("**Weekend Settings:**")
+            reduce_weekends = st.checkbox("Reduce weekend activity", value=True, 
+                                        help="Reduces commit frequency on weekends (Sat/Sun) to simulate realistic work patterns")
+            if reduce_weekends:
+                weekend_factor = st.slider("Weekend frequency multiplier", 0.01, 0.5, 0.05, 0.01,
+                                         help="Weekend commits will be: base_frequency × this multiplier")
+                st.caption(f"Weekend frequency: {frequency * weekend_factor:.2%} (vs weekday: {frequency:.2%})")
+            else:
+                weekend_factor = 1.0
+            
             # Calculate estimated commits
             if time_period == "Custom Period":
                 total_days = custom_weeks * 7
@@ -1160,7 +1208,13 @@ def main():
                         year_commits = []
                         for x in range(custom_weeks):
                             for y in range(7):   # 7 days
-                                if random.random() < frequency:
+                                # Apply weekend frequency reduction
+                                if reduce_weekends:
+                                    adjusted_frequency = apply_weekend_frequency(frequency, y, weekend_factor)
+                                else:
+                                    adjusted_frequency = frequency
+                                
+                                if random.random() < adjusted_frequency:
                                     num_commits = random.randint(min_commits, max_commits)
                                     for _ in range(num_commits):
                                         start_date = hacker.get_start_of_year(custom_weeks)
@@ -1176,7 +1230,7 @@ def main():
                     else:
                         # Generate multi-year data
                         year_commits = hacker.generate_multi_year_commits(
-                            years, min_commits, max_commits, frequency
+                            years, min_commits, max_commits, frequency, weekend_factor if reduce_weekends else 1.0
                         )
                     
                     st.session_state.year_commits = year_commits
