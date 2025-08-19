@@ -332,6 +332,108 @@ class StreamlitGitHubHacker:
             }
         except Exception as e:
             return {"error": str(e)}
+    
+    def get_git_config(self) -> Dict[str, Any]:
+        """Get Git configuration information"""
+        config_info = {}
+        
+        try:
+            # Get user name and email
+            success, name = self._run_git_command(['git', 'config', 'user.name'])
+            config_info['user_name'] = name if success else "Not configured"
+            
+            success, email = self._run_git_command(['git', 'config', 'user.email'])
+            config_info['user_email'] = email if success else "Not configured"
+            
+            # Get current branch
+            success, branch = self._run_git_command(['git', 'branch', '--show-current'])
+            config_info['current_branch'] = branch if success else "Unknown"
+            
+            # Get remote URL
+            success, remote_url = self._run_git_command(['git', 'remote', 'get-url', 'origin'])
+            config_info['remote_url'] = remote_url if success else "No remote configured"
+            
+            # Parse GitHub username from remote URL
+            if success and 'github.com' in remote_url:
+                if remote_url.startswith('https://github.com/'):
+                    # HTTPS format: https://github.com/username/repo.git
+                    parts = remote_url.replace('https://github.com/', '').replace('.git', '').split('/')
+                    if len(parts) >= 2:
+                        config_info['github_username'] = parts[0]
+                        config_info['github_repo'] = parts[1]
+                elif '@github.com:' in remote_url:
+                    # SSH format: git@github.com:username/repo.git
+                    parts = remote_url.split(':')[1].replace('.git', '').split('/')
+                    if len(parts) >= 2:
+                        config_info['github_username'] = parts[0]
+                        config_info['github_repo'] = parts[1]
+            
+            # Get repository status
+            success, status = self._run_git_command(['git', 'status', '--porcelain'])
+            config_info['has_uncommitted_changes'] = success and bool(status.strip())
+            
+            # Check if remote is reachable
+            success, _ = self._run_git_command(['git', 'ls-remote', '--heads', 'origin'])
+            config_info['remote_accessible'] = success
+            
+            # Get last commit info
+            success, last_commit = self._run_git_command(['git', 'log', '-1', '--pretty=format:%H|%an|%ae|%ad|%s', '--date=short'])
+            if success and last_commit:
+                parts = last_commit.split('|')
+                if len(parts) >= 5:
+                    config_info['last_commit'] = {
+                        'hash': parts[0][:8],
+                        'author_name': parts[1],
+                        'author_email': parts[2],
+                        'date': parts[3],
+                        'message': parts[4]
+                    }
+            
+            return config_info
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def get_repository_info(self) -> Dict[str, Any]:
+        """Get detailed repository information"""
+        repo_info = {}
+        
+        try:
+            # Get repository root
+            success, repo_root = self._run_git_command(['git', 'rev-parse', '--show-toplevel'])
+            repo_info['repo_root'] = repo_root if success else "Unknown"
+            
+            # Get all branches
+            success, branches = self._run_git_command(['git', 'branch', '-a'])
+            if success:
+                branch_list = [b.strip().replace('* ', '') for b in branches.split('\n') if b.strip()]
+                repo_info['branches'] = branch_list
+            else:
+                repo_info['branches'] = []
+            
+            # Get number of commits in current branch
+            success, commit_count = self._run_git_command(['git', 'rev-list', '--count', 'HEAD'])
+            repo_info['total_commits'] = int(commit_count) if success else 0
+            
+            # Get repository size (approximate)
+            success, objects_info = self._run_git_command(['git', 'count-objects', '-v'])
+            if success:
+                for line in objects_info.split('\n'):
+                    if line.startswith('size-pack'):
+                        size_kb = line.split()[1]
+                        repo_info['size_kb'] = int(size_kb)
+                        break
+                else:
+                    repo_info['size_kb'] = 0
+            
+            # Check if repository is bare
+            success, is_bare = self._run_git_command(['git', 'rev-parse', '--is-bare-repository'])
+            repo_info['is_bare'] = success and is_bare.strip().lower() == 'true'
+            
+            return repo_info
+            
+        except Exception as e:
+            return {"error": str(e)}
 
 def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.Figure:
     """Create a visual representation of the contribution graph"""
@@ -429,7 +531,7 @@ def text_to_pattern(text: str, width: int = 50) -> List[List[int]]:
             [1,1,1,1,1],
             [1,0,0,0,1],
             [1,0,0,0,1],
-            [0,0,0,0,0]
+            [1,0,0,0,1]
         ],
         'B': [
             [1,1,1,1,0],
@@ -768,6 +870,35 @@ def main():
     ⚠️ **Warning**: This is for educational purposes only. Do not use to mislead employers or others.
     """)
     
+    # Account verification section
+    if hacker._ensure_git_repo():
+        git_config = hacker.get_git_config()
+        
+        # Check for potential issues and show warnings
+        issues = []
+        if git_config.get('user_name') == "Not configured":
+            issues.append("Git user name not configured")
+        if git_config.get('user_email') == "Not configured":
+            issues.append("Git user email not configured")
+        if not git_config.get('remote_accessible', False):
+            issues.append("GitHub remote not accessible")
+        if 'github_username' not in git_config:
+            issues.append("No GitHub repository detected")
+            
+        if issues:
+            st.error("⚠️ **Configuration Issues Detected:**")
+            for issue in issues:
+                st.markdown(f"• {issue}")
+            st.markdown("**Please check the Repository Information in the sidebar →**")
+        else:
+            # Show success message with account info
+            if 'github_username' in git_config:
+                st.success(f"✅ **Ready to commit as:** {git_config['user_name']} ({git_config['user_email']}) to **{git_config['github_username']}/{git_config['github_repo']}**")
+            else:
+                st.info("ℹ️ **Local repository detected** - commits will be made locally")
+    else:
+        st.warning("⚠️ **No Git repository found.** Initialize one using the sidebar or navigate to an existing repository.")
+    
     # Sidebar for configuration
     st.sidebar.header("Configuration")
     
@@ -788,26 +919,159 @@ def main():
     # Initialize hacker
     hacker = StreamlitGitHubHacker(repo_path, data_file)
     
-    # Check git repository status
-    st.sidebar.subheader("Repository Status")
+    # Repository Information Panel
+    st.sidebar.subheader("🔧 Repository Information")
+    
     if hacker._ensure_git_repo():
-        st.sidebar.success("✅ Git repository detected")
+        # Get comprehensive repository information
+        git_config = hacker.get_git_config()
+        repo_info = hacker.get_repository_info()
+        commit_stats = hacker.get_commit_stats()
         
-        # Get repository stats
-        stats = hacker.get_commit_stats()
-        if "error" not in stats:
-            st.sidebar.info(f"Total commits: {stats['total_commits']}")
-            st.sidebar.info(f"Script commits: {stats['script_commits']}")
+        # Account & Repository Info
+        st.sidebar.markdown("**📋 Account & Repository:**")
+        
+        if 'github_username' in git_config:
+            st.sidebar.success(f"👤 **GitHub:** {git_config['github_username']}")
+            st.sidebar.info(f"📁 **Repo:** {git_config['github_repo']}")
+            
+            # Repository URL
+            if 'remote_url' in git_config and git_config['remote_url'] != "No remote configured":
+                repo_url = git_config['remote_url']
+                if repo_url.endswith('.git'):
+                    repo_url = repo_url[:-4]
+                if repo_url.startswith('git@github.com:'):
+                    repo_url = repo_url.replace('git@github.com:', 'https://github.com/')
+                st.sidebar.markdown(f"🔗 [Open Repository]({repo_url})")
         else:
-            st.sidebar.warning(f"Could not get stats: {stats['error']}")
+            st.sidebar.warning("⚠️ No GitHub remote detected")
+        
+        # Git Configuration
+        st.sidebar.markdown("**⚙️ Git Configuration:**")
+        
+        if git_config.get('user_name') != "Not configured":
+            st.sidebar.text(f"👤 {git_config['user_name']}")
+            st.sidebar.text(f"📧 {git_config['user_email']}")
+        else:
+            st.sidebar.error("❌ Git user not configured!")
+            st.sidebar.markdown("Run: `git config --global user.name 'Your Name'`")
+            st.sidebar.markdown("Run: `git config --global user.email 'your@email.com'`")
+        
+        # Repository Status
+        st.sidebar.markdown("**📊 Repository Status:**")
+        
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            st.metric("Branch", git_config.get('current_branch', 'Unknown'))
+        with col2:
+            if 'error' not in commit_stats:
+                st.metric("Commits", commit_stats['total_commits'])
+            else:
+                st.metric("Commits", "N/A")
+        
+        # Connection Status
+        if git_config.get('remote_accessible'):
+            st.sidebar.success("🌐 Remote accessible")
+        else:
+            st.sidebar.error("🚫 Remote not accessible")
+        
+        # Uncommitted changes warning
+        if git_config.get('has_uncommitted_changes'):
+            st.sidebar.warning("⚠️ You have uncommitted changes")
+        
+        # Script Statistics
+        if 'error' not in commit_stats:
+            st.sidebar.markdown("**🤖 Script Activity:**")
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                st.metric("Script Commits", commit_stats['script_commits'])
+            with col2:
+                regular_commits = commit_stats['total_commits'] - commit_stats['script_commits']
+                st.metric("Regular Commits", regular_commits)
+        
+        # Last Commit Info
+        if 'last_commit' in git_config:
+            last = git_config['last_commit']
+            st.sidebar.markdown("**🕒 Last Commit:**")
+            st.sidebar.text(f"📅 {last['date']}")
+            st.sidebar.text(f"👤 {last['author_name']}")
+            st.sidebar.text(f"💬 {last['message'][:30]}...")
+        
+        # Repository Details (Expandable)
+        with st.sidebar.expander("📂 Repository Details"):
+            if 'error' not in repo_info:
+                st.text(f"📍 Root: {repo_info['repo_root']}")
+                st.text(f"📦 Size: {repo_info.get('size_kb', 0)} KB")
+                st.text(f"🌿 Branches: {len(repo_info.get('branches', []))}")
+                
+                if repo_info.get('branches'):
+                    st.markdown("**Branches:**")
+                    for branch in repo_info['branches'][:5]:  # Show first 5 branches
+                        if branch.startswith('remotes/'):
+                            continue
+                        current = "🔸" if branch == git_config.get('current_branch') else "▫️"
+                        st.text(f"{current} {branch}")
+                    
+                    if len(repo_info['branches']) > 5:
+                        st.text(f"... and {len(repo_info['branches']) - 5} more")
+            else:
+                st.error("Could not get repository details")
+        
+        # Quick Actions
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**🔧 Quick Actions:**")
+        
+        if st.sidebar.button("🔄 Refresh Repository Info"):
+            st.rerun()
+        
+        if st.sidebar.button("🧪 Test Git Configuration"):
+            with st.sidebar.spinner("Testing configuration..."):
+                # Test basic git commands
+                test_results = []
+                
+                # Test git user config
+                if git_config.get('user_name') != "Not configured":
+                    test_results.append("✅ Git user configured")
+                else:
+                    test_results.append("❌ Git user not configured")
+                
+                # Test remote connectivity
+                if git_config.get('remote_accessible'):
+                    test_results.append("✅ Remote repository accessible")
+                else:
+                    test_results.append("❌ Remote repository not accessible")
+                
+                # Test commit ability (dry run)
+                success, _ = hacker._run_git_command(['git', 'status'])
+                if success:
+                    test_results.append("✅ Repository is ready for commits")
+                else:
+                    test_results.append("❌ Repository has issues")
+                
+                # Display results
+                st.sidebar.markdown("**Test Results:**")
+                for result in test_results:
+                    st.sidebar.text(result)
+        
+        # Safety Warnings
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**⚠️ Safety Reminders:**")
+        st.sidebar.caption("• This tool modifies Git history")
+        st.sidebar.caption("• Use private repos for testing")
+        st.sidebar.caption("• Always backup important data")
+        
     else:
         st.sidebar.error("❌ No git repository found")
-        if st.sidebar.button("Initialize Git Repository"):
+        st.sidebar.markdown("**Initialize Repository:**")
+        if st.sidebar.button("🚀 Initialize Git Repository"):
             if hacker._init_git_repo():
                 st.sidebar.success("Git repository initialized!")
                 st.rerun()
             else:
                 st.sidebar.error("Failed to initialize git repository")
+        
+        st.sidebar.markdown("**Or navigate to existing repo:**")
+        st.sidebar.caption("Change the repository path above")
     
     # Main content tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
