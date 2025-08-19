@@ -523,6 +523,115 @@ class StreamlitGitHubHacker:
             
         except Exception as e:
             return []
+    
+    def diagnose_github_profile_issues(self) -> Dict[str, Any]:
+        """Diagnose why commits might not appear on GitHub profile"""
+        issues = []
+        warnings = []
+        suggestions = []
+        
+        try:
+            git_config = self.get_git_config()
+            
+            # Check 1: Email match
+            if git_config.get('user_email') == "Not configured":
+                issues.append("Git email not configured")
+                suggestions.append("Set your Git email: git config user.email 'your@email.com'")
+            else:
+                warnings.append(f"Current Git email: {git_config['user_email']}")
+                suggestions.append("Ensure this email matches one of your GitHub account emails")
+            
+            # Check 2: Repository visibility
+            if 'github_username' in git_config:
+                warnings.append(f"Repository: {git_config['github_username']}/{git_config['github_repo']}")
+                suggestions.append("Check if this repository is public or if you have private contributions enabled")
+            else:
+                issues.append("No GitHub remote repository detected")
+                suggestions.append("Add a GitHub remote: git remote add origin https://github.com/username/repo.git")
+            
+            # Check 3: Commits pushed to main branch
+            success, current_branch = self._run_git_command(['git', 'branch', '--show-current'])
+            if success:
+                warnings.append(f"Current branch: {current_branch}")
+                if current_branch not in ['main', 'master']:
+                    issues.append(f"You're on branch '{current_branch}', not main/master")
+                    suggestions.append("GitHub profile only shows commits to the default branch (usually main/master)")
+            
+            # Check 4: Recent commits
+            success, recent_commits = self._run_git_command(['git', 'log', '--oneline', '-5'])
+            if success and recent_commits:
+                commit_count = len(recent_commits.split('\n'))
+                warnings.append(f"Recent commits found: {commit_count}")
+            else:
+                issues.append("No recent commits found")
+                suggestions.append("Make sure commits were actually created and pushed")
+            
+            # Check 5: Remote push status
+            success, push_status = self._run_git_command(['git', 'status', '-uno'])
+            if success:
+                if "ahead" in push_status:
+                    issues.append("You have unpushed commits")
+                    suggestions.append("Push your commits: git push origin main")
+                elif "up to date" in push_status or "up-to-date" in push_status:
+                    warnings.append("Repository is up to date with remote")
+            
+            # Check 6: Fork detection
+            if 'github_username' in git_config:
+                # This is a basic check - in reality you'd need GitHub API to detect forks properly
+                repo_name = git_config['github_repo']
+                if 'fork' in repo_name.lower() or 'copy' in repo_name.lower():
+                    warnings.append("This might be a fork")
+                    suggestions.append("Contributions to forks don't always show on your profile")
+            
+            return {
+                'issues': issues,
+                'warnings': warnings, 
+                'suggestions': suggestions,
+                'git_config': git_config
+            }
+            
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def check_commit_authorship(self) -> List[Dict[str, str]]:
+        """Check recent commit authorship details"""
+        commits = []
+        
+        try:
+            success, log_output = self._run_git_command([
+                'git', 'log', '--pretty=format:%H|%an|%ae|%ad|%s', '--date=iso', '-10'
+            ])
+            
+            if success:
+                for line in log_output.split('\n'):
+                    if '|' in line:
+                        parts = line.split('|')
+                        if len(parts) >= 5:
+                            commits.append({
+                                'hash': parts[0][:8],
+                                'author_name': parts[1],
+                                'author_email': parts[2],
+                                'date': parts[3],
+                                'message': parts[4]
+                            })
+            
+            return commits
+            
+        except Exception as e:
+            return []
+    
+    def get_github_profile_tips(self) -> List[str]:
+        """Get tips for ensuring commits appear on GitHub profile"""
+        return [
+            "🔹 Email must match one of your GitHub account emails",
+            "🔹 Repository must be public OR you must enable 'Private contributions' in GitHub settings",
+            "🔹 Commits must be on the default branch (main/master)",
+            "🔹 Commits must be pushed to GitHub (not just committed locally)",
+            "🔹 It can take up to 24 hours for contributions to appear",
+            "🔹 Commits to forks don't count toward your contribution graph",
+            "🔹 Commits must have a valid timestamp (not too far in past/future)",
+            "🔹 Your GitHub profile must have the correct timezone settings"
+        ]
 
 def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.Figure:
     """Create a visual representation of the contribution graph"""
@@ -1221,12 +1330,13 @@ def main():
         st.sidebar.caption("Change the repository path above")
     
     # Main content tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "🎯 Single Commit", 
         "🎲 Random Commits", 
         "🎨 Pattern Creator", 
         "📅 Fill Year", 
-        "🔄 Manage Commits"
+        "🔄 Manage Commits",
+        "🩺 Troubleshoot"
     ])
     
     with tab1:
@@ -1779,6 +1889,154 @@ def main():
                 if st.button("Confirm Revert", type="primary"):
                     # Implementation would go here
                     st.error("Revert functionality not yet implemented in Streamlit version")
+    
+    with tab6:
+        st.header("🩺 GitHub Profile Troubleshooting")
+        st.markdown("**Not seeing commits on your GitHub profile?** Use these diagnostic tools to identify the issue.")
+        
+        # Run diagnostics
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            if st.button("🔍 Diagnose Profile Issues", type="primary"):
+                with st.spinner("Running diagnostics..."):
+                    diagnosis = hacker.diagnose_github_profile_issues()
+                    st.session_state.diagnosis = diagnosis
+            
+            if st.button("📋 Check Recent Commits"):
+                with st.spinner("Checking commit authorship..."):
+                    commits = hacker.check_commit_authorship()
+                    st.session_state.recent_commits = commits
+        
+        with col2:
+            # GitHub profile tips
+            st.markdown("**💡 Common Issues & Solutions:**")
+            tips = hacker.get_github_profile_tips()
+            for tip in tips:
+                st.markdown(tip)
+        
+        # Show diagnosis results
+        if 'diagnosis' in st.session_state:
+            diagnosis = st.session_state.diagnosis
+            
+            if 'error' in diagnosis:
+                st.error(f"Diagnostic error: {diagnosis['error']}")
+            else:
+                st.markdown("---")
+                st.subheader("🔍 Diagnostic Results")
+                
+                # Issues (Critical)
+                if diagnosis['issues']:
+                    st.error("**❌ Critical Issues Found:**")
+                    for issue in diagnosis['issues']:
+                        st.markdown(f"• {issue}")
+                
+                # Warnings (Information)
+                if diagnosis['warnings']:
+                    st.warning("**⚠️ Current Configuration:**")
+                    for warning in diagnosis['warnings']:
+                        st.markdown(f"• {warning}")
+                
+                # Suggestions (Solutions)
+                if diagnosis['suggestions']:
+                    st.info("**💡 Suggested Solutions:**")
+                    for suggestion in diagnosis['suggestions']:
+                        st.markdown(f"• {suggestion}")
+                
+                # Quick fixes
+                st.markdown("---")
+                st.subheader("🔧 Quick Fixes")
+                
+                git_config = diagnosis.get('git_config', {})
+                
+                # Email verification
+                if git_config.get('user_email') != "Not configured":
+                    st.markdown("**📧 Email Verification:**")
+                    st.info(f"Your current Git email: **{git_config['user_email']}**")
+                    st.markdown("**✅ To verify this email is linked to your GitHub account:**")
+                    st.markdown("1. Go to [GitHub Settings → Emails](https://github.com/settings/emails)")
+                    st.markdown("2. Check if this email is listed and verified")
+                    st.markdown("3. If not, add and verify this email address")
+                
+                # Repository check
+                if 'github_username' in git_config:
+                    repo_url = f"https://github.com/{git_config['github_username']}/{git_config['github_repo']}"
+                    st.markdown("**🔗 Repository Check:**")
+                    st.markdown(f"**Repository:** [{git_config['github_username']}/{git_config['github_repo']}]({repo_url})")
+                    st.markdown("**✅ Verify repository settings:**")
+                    st.markdown("1. Check if repository is public")
+                    st.markdown("2. If private, enable 'Private contributions' in your [GitHub profile settings](https://github.com/settings/profile)")
+                
+                # Branch check
+                current_branch = git_config.get('current_branch', 'unknown')
+                if current_branch not in ['main', 'master']:
+                    st.markdown("**🌿 Branch Issue:**")
+                    st.warning(f"You're on branch '{current_branch}', but GitHub profiles only show commits to the default branch.")
+                    st.markdown("**🔧 To fix:**")
+                    if st.button("Switch to main branch"):
+                        success, output = hacker._run_git_command(['git', 'checkout', 'main'])
+                        if not success:
+                            success, output = hacker._run_git_command(['git', 'checkout', 'master'])
+                        
+                        if success:
+                            st.success("✅ Switched to main/master branch!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Could not switch branch: {output}")
+        
+        # Show recent commits analysis
+        if 'recent_commits' in st.session_state:
+            commits = st.session_state.recent_commits
+            
+            if commits:
+                st.markdown("---")
+                st.subheader("📋 Recent Commit Analysis")
+                
+                # Create a dataframe for better display
+                import pandas as pd
+                df = pd.DataFrame(commits)
+                
+                # Check for issues
+                current_email = hacker.get_git_config().get('user_email', 'Unknown')
+                email_issues = []
+                
+                for commit in commits:
+                    if commit['author_email'] != current_email:
+                        email_issues.append(f"Commit {commit['hash']}: {commit['author_email']} ≠ {current_email}")
+                
+                if email_issues:
+                    st.error("**❌ Email Mismatch Issues:**")
+                    for issue in email_issues:
+                        st.markdown(f"• {issue}")
+                    st.markdown("**These commits won't appear on your profile because the email doesn't match!**")
+                else:
+                    st.success("✅ All recent commits use the correct email address!")
+                
+                # Display commits table
+                st.markdown("**Recent Commits:**")
+                st.dataframe(df[['hash', 'author_name', 'author_email', 'date', 'message']], use_container_width=True)
+            else:
+                st.warning("No recent commits found.")
+        
+        # Additional help section
+        st.markdown("---")
+        st.subheader("🆘 Still Having Issues?")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**🔍 Manual Checks:**")
+            st.markdown("1. **Wait 24 hours** - GitHub can be slow to update")
+            st.markdown("2. **Check your GitHub profile** directly")
+            st.markdown("3. **Verify repository permissions**")
+            st.markdown("4. **Check GitHub's status page**")
+        
+        with col2:
+            st.markdown("**🔗 Helpful Links:**")
+            st.markdown("• [GitHub Profile Settings](https://github.com/settings/profile)")
+            st.markdown("• [GitHub Email Settings](https://github.com/settings/emails)")
+            st.markdown("• [GitHub Contributions Guide](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-github-profile/managing-contribution-graphs-on-your-profile/why-are-my-contributions-not-showing-up-on-my-profile)")
+            st.markdown("• [GitHub Status Page](https://githubstatus.com/)")
     
     # Footer
     st.markdown("---")
