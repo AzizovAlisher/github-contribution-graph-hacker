@@ -346,8 +346,11 @@ def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.F
         if 0 <= x < weeks and 0 <= y < days:
             grid[y][x] += 1
     
-    # Reverse the grid to match GitHub's layout (Sunday at top, Saturday at bottom)
+    # Reverse both axes to match GitHub's layout
+    # Y-axis: Sunday at top, Saturday at bottom
     grid = grid[::-1]
+    # X-axis: Reverse each row to fix horizontal mirroring
+    grid = [row[::-1] for row in grid]
     
     # Create heatmap
     fig = go.Figure(data=go.Heatmap(
@@ -366,8 +369,10 @@ def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.F
         yaxis=dict(
             tickmode='array',
             tickvals=list(range(7)),
-            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'],
-            autorange='reversed'  # This ensures proper orientation
+            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon']
+        ),
+        xaxis=dict(
+            autorange='reversed'  # Reverse X-axis to fix horizontal mirroring
         ),
         height=300
     )
@@ -379,8 +384,11 @@ def create_pattern_preview(pattern: List[List[int]]) -> go.Figure:
     if not pattern or not pattern[0]:
         return go.Figure()
     
-    # Reverse pattern to match GitHub's layout
+    # Reverse both axes to match GitHub's layout and fix mirroring
+    # Y-axis: Sunday at top, Saturday at bottom  
     pattern_reversed = pattern[::-1]
+    # X-axis: Reverse each row to fix horizontal mirroring
+    pattern_reversed = [row[::-1] for row in pattern_reversed]
     
     # Create heatmap for pattern preview
     fig = go.Figure(data=go.Heatmap(
@@ -399,8 +407,10 @@ def create_pattern_preview(pattern: List[List[int]]) -> go.Figure:
         yaxis=dict(
             tickmode='array',
             tickvals=list(range(min(7, len(pattern)))),
-            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][:len(pattern)],
-            autorange='reversed'
+            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][:len(pattern)]
+        ),
+        xaxis=dict(
+            autorange='reversed'  # Reverse X-axis to fix horizontal mirroring
         ),
         height=250,
         width=min(800, len(pattern[0]) * 15 + 100)
