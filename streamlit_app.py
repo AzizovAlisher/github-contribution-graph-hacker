@@ -870,6 +870,26 @@ def main():
     ⚠️ **Warning**: This is for educational purposes only. Do not use to mislead employers or others.
     """)
     
+    # Sidebar for configuration
+    st.sidebar.header("Configuration")
+    
+    # Repository path
+    repo_path = st.sidebar.text_input(
+        "Repository Path", 
+        value=".",
+        help="Path to your git repository"
+    )
+    
+    # Data file name
+    data_file = st.sidebar.text_input(
+        "Data File Name",
+        value="data.json",
+        help="Name of the JSON file to store commit data"
+    )
+    
+    # Initialize hacker
+    hacker = StreamlitGitHubHacker(repo_path, data_file)
+    
     # Account verification section
     if hacker._ensure_git_repo():
         git_config = hacker.get_git_config()
@@ -898,26 +918,6 @@ def main():
                 st.info("ℹ️ **Local repository detected** - commits will be made locally")
     else:
         st.warning("⚠️ **No Git repository found.** Initialize one using the sidebar or navigate to an existing repository.")
-    
-    # Sidebar for configuration
-    st.sidebar.header("Configuration")
-    
-    # Repository path
-    repo_path = st.sidebar.text_input(
-        "Repository Path", 
-        value=".",
-        help="Path to your git repository"
-    )
-    
-    # Data file name
-    data_file = st.sidebar.text_input(
-        "Data File Name",
-        value="data.json",
-        help="Name of the JSON file to store commit data"
-    )
-    
-    # Initialize hacker
-    hacker = StreamlitGitHubHacker(repo_path, data_file)
     
     # Repository Information Panel
     st.sidebar.subheader("🔧 Repository Information")
