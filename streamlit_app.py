@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 """
-GitHub Contribution Graph Hacker - Streamlit Web Application
-Based on the original Python implementation
+🎨 GitHub Contribution Graph Hacker - Interactive Web App
 
-This web app generates fake commits to make your GitHub contribution graph look more active.
-Educational purposes only - do not use to mislead employers or others.
+Create beautiful patterns in your GitHub contribution graph! 
+This Streamlit web app generates commits to make your contribution graph more active and artistic.
 
-Features:
-- Interactive web interface
-- Multiple commit generation strategies
-- Pattern creation
-- Commit reversal
-- Real-time feedback
+⚠️  For educational purposes only - use responsibly!
 
-Requirements:
+✨ Features:
+- 🎯 Single commits & patterns
+- 📝 Text-to-pattern conversion  
+- 🎨 Predefined artistic patterns
+- 📊 Multi-year commit generation
+- 🔧 Built-in troubleshooting
+- 🚀 One-click setup
+
+🔧 Requirements:
 - Git installed and configured
-- Python 3.6+
-- A GitHub repository (preferably private)
+- Python 3.7+
+- A GitHub account
+- Internet connection
+
+📖 Quick Start:
+1. Clone/download this repository
+2. Run: pip install -r requirements.txt
+3. Run: streamlit run streamlit_app.py
+4. Follow the setup wizard!
 """
 
 import streamlit as st
@@ -32,9 +41,18 @@ from typing import Optional, List, Dict, Any
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+from pathlib import Path
+
+# Configure Streamlit page
+st.set_page_config(
+    page_title="🎨 GitHub Graph Hacker",
+    page_icon="🎨",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 class StreamlitGitHubHacker:
-    def __init__(self, repo_path: str = ".", data_file: str = "data.json"):
+    def __init__(self, repo_path: str = ".", data_file: str = "commits.json"):
         """
         Initialize the GitHub Contribution Graph Hacker for Streamlit
         
@@ -42,42 +60,244 @@ class StreamlitGitHubHacker:
             repo_path: Path to the git repository
             data_file: Name of the JSON file to store commit data
         """
-        self.repo_path = repo_path
+        self.repo_path = os.path.abspath(repo_path)
         self.data_file = data_file
-        self.data_path = os.path.join(repo_path, data_file)
+        self.data_path = os.path.join(self.repo_path, data_file)
         
     def _ensure_git_repo(self):
-        """Ensure we're in a git repository"""
-        try:
-            subprocess.run(["git", "status"], 
-                         cwd=self.repo_path, 
-                         check=True, 
-                         capture_output=True)
-            return True
-        except subprocess.CalledProcessError:
-            return False
+        """Ensure we're in a git repository and initialize if needed"""
+        git_dir = os.path.join(self.repo_path, '.git')
+        if not os.path.exists(git_dir):
+            # Try to initialize git repo
+            success, output = self._run_git_command(['git', 'init'])
+            if not success:
+                return False, f"Failed to initialize git repository: {output}"
             
-    def _init_git_repo(self):
-        """Initialize git repo if it doesn't exist"""
-        try:
-            subprocess.run(["git", "init"], cwd=self.repo_path, check=True)
-            return True
-        except subprocess.CalledProcessError:
-            return False
-
-    def _run_git_command(self, command: List[str]) -> tuple[bool, str]:
+            # Set up initial commit if no commits exist
+            readme_path = os.path.join(self.repo_path, 'README.md')
+            if not os.path.exists(readme_path):
+                with open(readme_path, 'w') as f:
+                    f.write("# My GitHub Contribution Graph\n\nGenerated with GitHub Graph Hacker 🎨")
+                
+                self._run_git_command(['git', 'add', 'README.md'])
+                self._run_git_command(['git', 'commit', '-m', 'Initial commit'])
+        
+        return True, "Git repository ready"
+    
+    def _run_git_command(self, command: List[str], cwd: Optional[str] = None) -> tuple[bool, str]:
         """Run a git command and return success status and output"""
         try:
+            if cwd is None:
+                cwd = self.repo_path
+            
             result = subprocess.run(
-                command, 
-                cwd=self.repo_path, 
-                check=True, 
-                capture_output=True, 
-                text=True
+                command,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=30
             )
-            return True, result.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            return False, e.stderr
+            
+            return result.returncode == 0, result.stdout.strip() or result.stderr.strip()
+        except subprocess.TimeoutExpired:
+            return False, "Command timed out"
+        except Exception as e:
+            return False, str(e)
+    
+    def check_git_status(self) -> Dict[str, Any]:
+        """Check comprehensive git and GitHub status"""
+        status = {
+            'git_installed': False,
+            'in_git_repo': False,
+            'has_remote': False,
+            'remote_accessible': False,
+            'user_configured': False,
+            'email_configured': False,
+            'current_branch': None,
+            'remote_url': None,
+            'user_name': None,
+            'user_email': None,
+            'issues': [],
+            'suggestions': []
+        }
+        
+        # Check if git is installed
+        success, _ = self._run_git_command(['git', '--version'])
+        status['git_installed'] = success
+        
+        if not success:
+            status['issues'].append("Git is not installed")
+            status['suggestions'].append("Install Git from https://git-scm.com/")
+            return status
+        
+        # Ensure git repo exists
+        repo_success, repo_msg = self._ensure_git_repo()
+        status['in_git_repo'] = repo_success
+        
+        if not repo_success:
+            status['issues'].append(f"Git repository issue: {repo_msg}")
+            return status
+        
+        # Check git configuration
+        config = self.get_git_config()
+        status['user_name'] = config.get('user_name')
+        status['user_email'] = config.get('user_email')
+        status['user_configured'] = bool(config.get('user_name'))
+        status['email_configured'] = bool(config.get('user_email'))
+        
+        if not status['user_configured']:
+            status['issues'].append("Git user name not configured")
+            status['suggestions'].append("Set your name: git config --global user.name 'Your Name'")
+        
+        if not status['email_configured']:
+            status['issues'].append("Git email not configured")
+            status['suggestions'].append("Set your email: git config --global user.email 'your.email@example.com'")
+        
+        # Check current branch
+        success, branch = self._run_git_command(['git', 'branch', '--show-current'])
+        if success:
+            status['current_branch'] = branch or 'main'
+        
+        # Check for remote
+        success, remotes = self._run_git_command(['git', 'remote', '-v'])
+        if success and remotes:
+            status['has_remote'] = True
+            lines = remotes.split('\n')
+            if lines:
+                parts = lines[0].split()
+                if len(parts) >= 2:
+                    status['remote_url'] = parts[1]
+        
+        # Test remote accessibility
+        if status['has_remote']:
+            success, _ = self._run_git_command(['git', 'ls-remote', 'origin'])
+            status['remote_accessible'] = success
+            
+            if not success:
+                status['issues'].append("Cannot access remote repository")
+                status['suggestions'].append("Check your GitHub authentication (token/SSH key)")
+        
+        return status
+
+    def auto_detect_repo_path(self) -> Optional[str]:
+        """Auto-detect the best repository path"""
+        # Try current directory first
+        current_dir = os.getcwd()
+        if os.path.exists(os.path.join(current_dir, '.git')):
+            return current_dir
+        
+        # Look for common repo directories
+        home = Path.home()
+        common_paths = [
+            home / "github-graph-hack",
+            home / "contribution-graph",
+            home / "github-contributions",
+            home / "coding" / "github-graph",
+            current_dir
+        ]
+        
+        for path in common_paths:
+            if path.exists() and (path / '.git').exists():
+                return str(path)
+        
+        # Default to current directory
+        return current_dir
+
+    def setup_new_repository(self, repo_name: str = "github-contribution-graph") -> tuple[bool, str]:
+        """Set up a new repository for the user"""
+        try:
+            # Create directory
+            repo_path = os.path.join(Path.home(), repo_name)
+            os.makedirs(repo_path, exist_ok=True)
+            
+            # Initialize git
+            success, output = self._run_git_command(['git', 'init'], cwd=repo_path)
+            if not success:
+                return False, f"Failed to initialize git: {output}"
+            
+            # Create initial files
+            readme_content = f"""# {repo_name.title()}
+
+🎨 My GitHub contribution graph patterns created with GitHub Graph Hacker!
+
+This repository contains commit data that creates beautiful patterns in my GitHub contribution graph.
+
+## Generated Patterns
+
+- Various artistic patterns
+- Text-based designs
+- Custom commit frequencies
+
+## Tools Used
+
+- [GitHub Graph Hacker](https://github.com/your-username/github-graph-hacker) - Streamlit web app for generating contribution patterns
+
+---
+
+⚠️ **Note**: This repository is for educational purposes and artistic expression. All commits are generated automatically to create visual patterns.
+"""
+            
+            readme_path = os.path.join(repo_path, 'README.md')
+            with open(readme_path, 'w') as f:
+                f.write(readme_content)
+            
+            # Create .gitignore
+            gitignore_content = """# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+"""
+            
+            gitignore_path = os.path.join(repo_path, '.gitignore')
+            with open(gitignore_path, 'w') as f:
+                f.write(gitignore_content)
+            
+            # Initial commit
+            self._run_git_command(['git', 'add', '.'], cwd=repo_path)
+            self._run_git_command(['git', 'commit', '-m', '🎨 Initial commit - GitHub Graph Hacker setup'], cwd=repo_path)
+            
+            # Set main branch
+            self._run_git_command(['git', 'branch', '-M', 'main'], cwd=repo_path)
+            
+            return True, repo_path
+            
+        except Exception as e:
+            return False, str(e)
 
     def get_date_string(self, date: datetime.datetime) -> str:
         """Convert datetime to the format GitHub stores internally"""
@@ -155,9 +375,9 @@ class StreamlitGitHubHacker:
         """Get the start date for generating commits"""
         today = datetime.datetime.now()
         start_date = today - datetime.timedelta(weeks=weeks_back)
-        # Align to start of week (Monday)
-        days_since_monday = start_date.weekday()
-        start_date = start_date - datetime.timedelta(days=days_since_monday)
+        # Align to start of week (Sunday) - GitHub's contribution graph starts on Sunday
+        days_since_sunday = (start_date.weekday() + 1) % 7
+        start_date = start_date - datetime.timedelta(days=days_since_sunday)
         return start_date
     
     def generate_multi_year_commits(self, years: int, min_commits: int = 0, max_commits: int = 3, frequency: float = 0.7, weekend_factor: float = 0.05) -> List[Dict]:
@@ -285,20 +505,30 @@ class StreamlitGitHubHacker:
         """Create commits data based on a 2D pattern"""
         commits_data = []
         
-        for y, row in enumerate(pattern):
-            for x, num_commits in enumerate(row):
-                if num_commits > 0 and x < 52 and y < 7:  # Ensure within bounds
-                    for _ in range(num_commits):
-                        start_date = self.get_start_of_year()
-                        target_date = start_date + datetime.timedelta(weeks=x, days=y)
+        # Transpose the pattern to match GitHub's coordinate system
+        # Pattern[row][col] -> GitHub[week][day]
+        # We need to rotate the pattern so text appears correctly
+        if pattern:
+            max_weeks = len(pattern[0]) if pattern[0] else 0
+            max_days = len(pattern)
+            
+            for week in range(max_weeks):
+                for day in range(max_days):
+                    if day < len(pattern) and week < len(pattern[day]):
+                        num_commits = pattern[day][week]
                         
-                        if target_date <= datetime.datetime.now():
-                            commits_data.append({
-                                'x': x,
-                                'y': y,
-                                'date': target_date,
-                                'date_str': self.get_date_string(target_date)
-                            })
+                        if num_commits > 0 and week < 52 and day < 7:  # Ensure within bounds
+                            for _ in range(num_commits):
+                                start_date = self.get_start_of_year()
+                                target_date = start_date + datetime.timedelta(weeks=week, days=day)
+                                
+                                if target_date <= datetime.datetime.now():
+                                    commits_data.append({
+                                        'x': week,
+                                        'y': day,
+                                        'date': target_date,
+                                        'date_str': self.get_date_string(target_date)
+                                    })
         
         return commits_data
 
@@ -1064,49 +1294,277 @@ def apply_weekend_frequency(base_frequency: float, day_of_week: int, weekend_fac
         return base_frequency * weekend_factor
     return base_frequency
 
+
+def setup_wizard():
+    """Interactive setup wizard for first-time users"""
+    st.title("🚀 Welcome to GitHub Graph Hacker!")
+    st.markdown("Let's get you set up in just a few steps...")
+    
+    # Initialize session state for setup
+    if 'setup_step' not in st.session_state:
+        st.session_state.setup_step = 1
+    
+    if 'setup_complete' not in st.session_state:
+        st.session_state.setup_complete = False
+    
+    # Step 1: Check Git Installation
+    if st.session_state.setup_step == 1:
+        st.subheader("Step 1: Check Git Installation")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("First, let's make sure Git is installed on your system...")
+            
+            if st.button("🔍 Check Git Installation", type="primary"):
+                dummy_hacker = StreamlitGitHubHacker()
+                success, output = dummy_hacker._run_git_command(['git', '--version'])
+                
+                if success:
+                    st.success(f"✅ Git is installed! {output}")
+                    st.session_state.setup_step = 2
+                    st.rerun()
+                else:
+                    st.error("❌ Git is not installed or not in PATH")
+                    st.markdown("""
+                    **To install Git:**
+                    - **Windows**: Download from https://git-scm.com/
+                    - **Mac**: Run `brew install git` or download from https://git-scm.com/
+                    - **Linux**: Run `sudo apt install git` (Ubuntu/Debian) or equivalent
+                    """)
+        
+        with col2:
+            st.info("💡 **Why Git?**\n\nGit is required to create commits that will appear on your GitHub contribution graph.")
+    
+    # Step 2: Repository Setup
+    elif st.session_state.setup_step == 2:
+        st.subheader("Step 2: Repository Setup")
+        
+        tab1, tab2, tab3 = st.tabs(["🔍 Auto-Detect", "📁 Existing Repo", "🆕 Create New"])
+        
+        with tab1:
+            st.markdown("Let me try to find an existing Git repository...")
+            
+            if st.button("🔍 Auto-Detect Repository", type="primary"):
+                dummy_hacker = StreamlitGitHubHacker()
+                repo_path = dummy_hacker.auto_detect_repo_path()
+                
+                if repo_path and os.path.exists(os.path.join(repo_path, '.git')):
+                    st.success(f"✅ Found Git repository: `{repo_path}`")
+                    st.session_state.detected_repo_path = repo_path
+                    st.session_state.setup_step = 3
+                    st.rerun()
+                else:
+                    st.warning("⚠️ No Git repository found. Please use one of the other tabs.")
+        
+        with tab2:
+            st.markdown("Browse to an existing Git repository:")
+            
+            manual_path = st.text_input(
+                "Repository Path",
+                value=os.getcwd(),
+                help="Enter the full path to your Git repository"
+            )
+            
+            if st.button("✅ Use This Repository"):
+                if os.path.exists(os.path.join(manual_path, '.git')):
+                    st.success(f"✅ Valid Git repository: `{manual_path}`")
+                    st.session_state.detected_repo_path = manual_path
+                    st.session_state.setup_step = 3
+                    st.rerun()
+                else:
+                    st.error("❌ This is not a valid Git repository")
+        
+        with tab3:
+            st.markdown("Create a new repository for your contribution patterns:")
+            
+            repo_name = st.text_input(
+                "Repository Name",
+                value="github-contribution-graph",
+                help="This will be created in your home directory"
+            )
+            
+            if st.button("🆕 Create New Repository"):
+                dummy_hacker = StreamlitGitHubHacker()
+                success, result = dummy_hacker.setup_new_repository(repo_name)
+                
+                if success:
+                    st.success(f"✅ Repository created successfully: `{result}`")
+                    st.session_state.detected_repo_path = result
+                    st.session_state.setup_step = 3
+                    st.rerun()
+                else:
+                    st.error(f"❌ Failed to create repository: {result}")
+    
+    # Step 3: Git Configuration
+    elif st.session_state.setup_step == 3:
+        st.subheader("Step 3: Git Configuration")
+        
+        repo_path = st.session_state.get('detected_repo_path', os.getcwd())
+        hacker = StreamlitGitHubHacker(repo_path)
+        
+        st.markdown(f"**Repository**: `{repo_path}`")
+        
+        # Check current git config
+        config = hacker.get_git_config()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            current_name = config.get('user_name', '')
+            git_name = st.text_input(
+                "Git User Name",
+                value=current_name,
+                help="Your name for Git commits"
+            )
+        
+        with col2:
+            current_email = config.get('user_email', '')
+            git_email = st.text_input(
+                "Git Email",
+                value=current_email,
+                help="Email associated with your GitHub account"
+            )
+        
+        if st.button("💾 Save Git Configuration", type="primary"):
+            if git_name and git_email:
+                # Set git config
+                name_success, name_output = hacker._run_git_command(['git', 'config', 'user.name', git_name])
+                email_success, email_output = hacker._run_git_command(['git', 'config', 'user.email', git_email])
+                
+                if name_success and email_success:
+                    st.success("✅ Git configuration saved!")
+                    st.session_state.final_repo_path = repo_path
+                    st.session_state.setup_step = 4
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to save Git configuration")
+            else:
+                st.error("❌ Please fill in both name and email")
+        
+        st.info("💡 **Important**: Use the same email that's associated with your GitHub account for commits to appear on your profile!")
+    
+    # Step 4: Complete
+    elif st.session_state.setup_step == 4:
+        st.subheader("🎉 Setup Complete!")
+        
+        repo_path = st.session_state.get('final_repo_path', os.getcwd())
+        
+        st.success(f"""
+        **Your GitHub Graph Hacker is ready!**
+        
+        📁 **Repository**: `{repo_path}`
+        🎯 **Ready to create patterns**: Yes!
+        🔧 **Git configured**: Yes!
+        """)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🚀 Start Creating Patterns!", type="primary"):
+                st.session_state.setup_complete = True
+                st.session_state.repo_path = repo_path
+                st.rerun()
+        
+        with col2:
+            if st.button("🔄 Run Setup Again"):
+                # Reset setup
+                for key in ['setup_step', 'detected_repo_path', 'final_repo_path']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+
+
 def main():
-    st.set_page_config(
-        page_title="GitHub Contribution Graph Hacker",
-        page_icon="📊",
-        layout="wide"
-    )
+    # Check if this is first run or setup is not complete
+    if not st.session_state.get('setup_complete', False):
+        setup_wizard()
+        return
     
-    st.title("📊 GitHub Contribution Graph Hacker")
+    st.title("🎨 GitHub Graph Hacker")
+    
+    # Welcome message for returning users
+    if st.session_state.get('repo_path'):
+        repo_name = os.path.basename(st.session_state.get('repo_path', ''))
+        st.success(f"🎉 Welcome back! Working with repository: **{repo_name}**")
+    
     st.markdown("""
-    **Educational tool for generating fake commits to make your GitHub contribution graph look more active.**
+    Create beautiful patterns in your GitHub contribution graph! 
     
-    ⚠️ **Warning**: This is for educational purposes only. Do not use to mislead employers or others.
+    ⚠️ **Educational purposes only** - Use responsibly and don't mislead others about your coding activity.
+    
+    **Quick Start:**
+    1. 🎯 Try **Single Commit** first to test your setup
+    2. 📝 Create **Text Patterns** with your name or message  
+    3. 🎨 Use **Predefined Patterns** for artistic designs
+    4. 🔧 Check **Troubleshoot** if commits don't appear on your profile
     """)
     
     # Sidebar for configuration
-    st.sidebar.header("Configuration")
+    st.sidebar.header("⚙️ Configuration")
     
-    # Repository path
+    # Repository path (from setup or manual)
+    default_repo_path = st.session_state.get('repo_path', os.getcwd())
     repo_path = st.sidebar.text_input(
-        "Repository Path", 
-        value=".",
-        help="Path to your git repository"
+        "Repository Path",
+        value=default_repo_path,
+        help="Path to your Git repository where commits will be created"
     )
     
-    # Data file name
-    default_data_file = st.session_state.get('data_file', 'data.json')
-    data_file = st.sidebar.text_input(
+    # Update session state
+    st.session_state.repo_path = repo_path
+    
+    # Data file input
+    data_file = st.sidebar.selectbox(
         "Data File Name",
-        value=default_data_file,
-        help="Name of the JSON file to store commit data. Note: 'data.json' is in .gitignore!"
+        options=["commits.json", "data.json", "graph_data.json"],
+        index=0,
+        help="JSON file to store commit data (commits.json is recommended)"
     )
     
-    # Warning if using default data.json
-    if data_file == "data.json":
-        st.sidebar.warning("⚠️ 'data.json' is ignored by .gitignore! Consider using 'commits.json' instead.")
-        if st.sidebar.button("🔧 Use 'commits.json' instead"):
-            st.session_state.data_file = "commits.json"
-            st.rerun()
+    # Quick setup reset
+    if st.sidebar.button("🔄 Run Setup Wizard Again"):
+        st.session_state.setup_complete = False
+        st.rerun()
     
     # Initialize hacker
     hacker = StreamlitGitHubHacker(repo_path, data_file)
     
-    # Account verification section
+    # Quick status check
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Quick Status")
+    
+    with st.sidebar:
+        status = hacker.check_git_status()
+        
+        # Git Installation
+        if status['git_installed']:
+            st.success("✅ Git installed")
+        else:
+            st.error("❌ Git not installed")
+            
+        # Repository
+        if status['in_git_repo']:
+            st.success("✅ Git repository ready")
+        else:
+            st.error("❌ No Git repository")
+            
+        # Configuration
+        if status['user_configured'] and status['email_configured']:
+            st.success("✅ Git configured")
+        else:
+            st.warning("⚠️ Git configuration incomplete")
+            
+        # Remote (optional)
+        if status['has_remote']:
+            if status['remote_accessible']:
+                st.success("✅ Remote accessible")
+            else:
+                st.warning("⚠️ Remote connection issues")
+        else:
+            st.info("ℹ️ No remote repository (optional)")
+    
+    # Account verification section (detailed)
     if hacker._ensure_git_repo():
         git_config = hacker.get_git_config()
         
