@@ -150,6 +150,40 @@ Upload JSON files with custom 2D arrays:
 }
 ```
 
+## 🧪 Safe Testing
+
+Before making actual commits, you can test the functionality safely:
+
+### Option 1: Use the Built-in Dry Run
+1. Open the **🔄 Manage Commits** tab in the web app
+2. Use the **Safe Testing Mode** section
+3. Click **Test Single Commit (Dry Run)** to see what would happen
+
+### Option 2: Run the Test Script
+```bash
+python test_safe.py
+```
+
+This script shows:
+- ✅ Date calculations and coordinate mapping
+- ✅ Pattern generation examples
+- ✅ Commit simulation (no actual commits)
+- ✅ Safety checks and validations
+
+### Option 3: Use a Test Repository
+```bash
+# Create a test repository
+mkdir test-github-graph
+cd test-github-graph
+git init
+echo "# Test Repository" > README.md
+git add README.md
+git commit -m "Initial commit"
+
+# Test the app in this repository
+streamlit run streamlit_app.py
+```
+
 ## 🔧 Troubleshooting
 
 ### Common Issues & Solutions
@@ -283,7 +317,7 @@ A: Potentially yes. The commits have patterns and timestamps that might look art
 A: No, this works with free GitHub accounts.
 
 ### Q: Can I undo the commits?
-A: Yes! Use the "Reverse Commits" feature in the app, or manually reset your Git history.
+A: Yes! Use the "Revert All Script Commits" feature in the Manage Commits tab, or manually reset your Git history.
 
 ### Q: Why aren't my commits showing up?
 A: Check the troubleshooting section above. Most issues are email configuration or timing related.

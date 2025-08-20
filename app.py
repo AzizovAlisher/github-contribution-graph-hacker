@@ -178,9 +178,9 @@ class GitHubHacker:
         """
         today = datetime.datetime.now()
         start_date = today - datetime.timedelta(weeks=weeks_back)
-        # Align to start of week (Monday)
-        days_since_monday = start_date.weekday()
-        start_date = start_date - datetime.timedelta(days=days_since_monday)
+        # Align to start of week (Sunday) - GitHub's contribution graph starts on Sunday
+        days_since_sunday = (start_date.weekday() + 1) % 7
+        start_date = start_date - datetime.timedelta(days=days_since_sunday)
         return start_date
 
     def mark_commit(self, x: int, y: int, push: bool = False):
@@ -190,7 +190,7 @@ class GitHubHacker:
 
         Args:
             x: Week offset (0-52, horizontal position)
-            y: Day offset (0-6, vertical position, 0=Monday)
+            y: Day offset (0-6, vertical position, 0=Sunday, 1=Monday, ..., 6=Saturday)
             push: Whether to push after commit
         """
         start_date = self.get_start_of_year()

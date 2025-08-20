@@ -872,6 +872,69 @@ Thumbs.db
             "🔹 Commits must have a valid timestamp (not too far in past/future)",
             "🔹 Your GitHub profile must have the correct timezone settings"
         ]
+    
+    def revert_all_commits(self) -> tuple[bool, str]:
+        """
+        Revert all commits created by this script
+        WARNING: This is destructive and will modify Git history
+        """
+        try:
+            # Get total commit count
+            success, total_commits = self._run_git_command(['git', 'rev-list', '--count', 'HEAD'])
+            if not success:
+                return False, "Could not get commit count"
+            
+            # Find commits by message patterns (more comprehensive)
+            patterns = [
+                '--grep=GitHub hack commit',
+                '--grep=Commit for 20',  # Catches "Commit for 2024-..." etc
+                '--grep=hack commit'
+            ]
+            
+            all_commits = set()
+            for pattern in patterns:
+                success, commits = self._run_git_command(['git', 'log', pattern, '--pretty=format:%H'])
+                if success and commits.strip():
+                    all_commits.update(commits.strip().split('\n'))
+            
+            # Remove empty strings
+            all_commits = [c for c in all_commits if c.strip()]
+            
+            if not all_commits:
+                return False, "No commits found to revert."
+                
+            # Alternative approach: reset to initial commit if we have many commits
+            if len(all_commits) > 100:
+                # Find the first commit (initial commit)
+                success, first_commit = self._run_git_command(['git', 'rev-list', '--max-parents=0', 'HEAD'])
+                if success and first_commit.strip():
+                    success1, _ = self._run_git_command(['git', 'reset', '--hard', first_commit.strip()])
+                    if success1:
+                        success2, push_output = self._run_git_command(['git', 'push', '--force', 'origin', 'main'])
+                        if success2:
+                            return True, f"Successfully reset to initial commit! Removed {len(all_commits)} commits."
+                        else:
+                            return True, f"Reset to initial commit locally, but push failed: {push_output}"
+            
+            # Original method for smaller numbers of commits
+            if all_commits:
+                oldest_commit = all_commits[-1]
+                success, parent_commit = self._run_git_command(['git', 'rev-parse', f'{oldest_commit}^'])
+                if success:
+                    success1, _ = self._run_git_command(['git', 'reset', '--hard', parent_commit.strip()])
+                    if success1:
+                        success2, push_output = self._run_git_command(['git', 'push', '--force', 'origin', 'main'])
+                        if success2:
+                            return True, f"Successfully reverted {len(all_commits)} commits!"
+                        else:
+                            return True, f"Reverted locally, but push failed: {push_output}"
+                    else:
+                        return False, "Could not reset to parent commit"
+                else:
+                    return False, "Could not find parent commit. Repository may be in an inconsistent state."
+                    
+        except Exception as e:
+            return False, f"Error during revert: {e}"
 
 def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.Figure:
     """Create a visual representation of the contribution graph"""
@@ -886,11 +949,11 @@ def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.F
         if 0 <= x < weeks and 0 <= y < days:
             grid[y][x] += 1
     
-    # Reverse both axes to match GitHub's layout
-    # Y-axis: Sunday at top, Saturday at bottom
-    grid = grid[::-1]
-    # X-axis: Reverse each row to fix horizontal mirroring
-    grid = [row[::-1] for row in grid]
+    # Don't reverse X-axis to keep text patterns readable
+    # GitHub shows oldest weeks on left, newest on right, but patterns should read left-to-right
+    
+    # Day labels for GitHub layout (Sunday = 0, Monday = 1, ..., Saturday = 6)
+    day_labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     
     # Create heatmap
     fig = go.Figure(data=go.Heatmap(
@@ -899,20 +962,20 @@ def create_contribution_graph(commits_data: List[Dict], weeks: int = 52) -> go.F
         showscale=True,
         hoverongaps=False,
         hovertemplate='Week: %{x}<br>Day: %{customdata}<br>Commits: %{z}<extra></extra>',
-        customdata=[['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][i % 7] for i in range(len(grid))]
+        customdata=[day_labels[i % 7] for i in range(len(grid))]
     ))
     
     fig.update_layout(
         title="GitHub Contribution Graph Preview",
-        xaxis_title="Weeks",
+        xaxis_title="Weeks (patterns read left to right)",
         yaxis_title="Days of Week",
         yaxis=dict(
             tickmode='array',
             tickvals=list(range(7)),
-            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon']
-        ),
-        xaxis=dict(
-            autorange='reversed'  # Reverse X-axis to fix horizontal mirroring
+            ticktext=day_labels,
+            # Ensure Sunday is at top (y=0) and Saturday at bottom (y=6)
+            autorange=False,
+            range=[6.5, -0.5]  # Reversed range to put Sunday at top
         ),
         height=300
     )
@@ -924,33 +987,33 @@ def create_pattern_preview(pattern: List[List[int]]) -> go.Figure:
     if not pattern or not pattern[0]:
         return go.Figure()
     
-    # Reverse both axes to match GitHub's layout and fix mirroring
-    # Y-axis: Sunday at top, Saturday at bottom  
-    pattern_reversed = pattern[::-1]
-    # X-axis: Reverse each row to fix horizontal mirroring
-    pattern_reversed = [row[::-1] for row in pattern_reversed]
+    # Don't reverse X-axis to keep text patterns readable left-to-right
+    pattern_display = pattern
+    
+    # Day labels for GitHub layout (Sunday = 0, Monday = 1, ..., Saturday = 6)
+    day_labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     
     # Create heatmap for pattern preview
     fig = go.Figure(data=go.Heatmap(
-        z=pattern_reversed,
+        z=pattern_display,
         colorscale='Greens',
         showscale=True,
         hoverongaps=False,
         hovertemplate='Week: %{x}<br>Day: %{customdata}<br>Commits: %{z}<extra></extra>',
-        customdata=[['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][i % 7] for i in range(len(pattern_reversed))]
+        customdata=[day_labels[i % 7] for i in range(len(pattern_display))]
     ))
     
     fig.update_layout(
         title="Pattern Preview",
-        xaxis_title="Weeks",
+        xaxis_title="Weeks (text reads left to right)",
         yaxis_title="Days of Week",
         yaxis=dict(
             tickmode='array',
             tickvals=list(range(min(7, len(pattern)))),
-            ticktext=['Sun', 'Sat', 'Fri', 'Thu', 'Wed', 'Tue', 'Mon'][:len(pattern)]
-        ),
-        xaxis=dict(
-            autorange='reversed'  # Reverse X-axis to fix horizontal mirroring
+            ticktext=day_labels[:len(pattern)],
+            # Ensure Sunday is at top (y=0) and Saturday at bottom (y=6)
+            autorange=False,
+            range=[min(7, len(pattern)) - 0.5, -0.5]  # Reversed range to put Sunday at top
         ),
         height=250,
         width=min(800, len(pattern[0]) * 15 + 100)
@@ -1285,8 +1348,8 @@ def text_to_pattern(text: str, width: int = 50) -> List[List[int]]:
     return pattern
 
 def is_weekend_day(day_of_week: int) -> bool:
-    """Check if a day is weekend (Saturday=5, Sunday=6 in 0-6 system where Monday=0)"""
-    return day_of_week in [5, 6]  # Saturday and Sunday
+    """Check if a day is weekend (Sunday=0, Saturday=6 in 0-6 system where Sunday=0)"""
+    return day_of_week in [0, 6]  # Sunday and Saturday
 
 def apply_weekend_frequency(base_frequency: float, day_of_week: int, weekend_factor: float = 0.05) -> float:
     """Apply weekend frequency reduction"""
@@ -2355,16 +2418,146 @@ def main():
             with col3:
                 st.metric("Regular Commits", stats['total_commits'] - stats['script_commits'])
         
-        st.subheader("Danger Zone")
-        st.markdown("⚠️ **Warning**: These operations will modify your Git history!")
+        # Safe Testing Mode
+        st.subheader("🧪 Safe Testing Mode")
+        st.markdown("Test your patterns without actually committing to Git.")
         
-        if st.button("🗑️ Revert All Script Commits", type="secondary"):
-            st.warning("This will remove all commits created by this script!")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Dry Run Mode:**")
+            if st.button("🔍 Test Single Commit (Dry Run)", type="secondary"):
+                x_test = st.slider("Test Week", 0, 51, 10, key="test_x")
+                y_test = st.slider("Test Day", 0, 6, 3, key="test_y")
+                
+                start_date = hacker.get_start_of_year()
+                target_date = start_date + datetime.timedelta(weeks=x_test, days=y_test)
+                
+                st.info(f"**Dry Run Result:**")
+                st.info(f"📅 Target date: {target_date.strftime('%Y-%m-%d (%A)')}")
+                st.info(f"📍 Coordinates: Week {x_test}, Day {y_test}")
+                st.info(f"📝 Would create commit: 'Commit for {hacker.get_date_string(target_date)}'")
+                
+                if target_date > datetime.datetime.now():
+                    st.warning("⚠️ This date is in the future and would be skipped!")
+                else:
+                    st.success("✅ This commit would be created successfully!")
+        
+        with col2:
+            st.markdown("**Repository Backup:**")
+            if st.button("📋 Show Git Commands for Manual Backup"):
+                st.code("""
+# Create a backup branch before making changes
+git checkout -b backup-$(date +%Y%m%d-%H%M%S)
+git checkout main
+
+# To restore from backup if needed:
+# git checkout backup-YYYYMMDD-HHMMSS
+# git checkout -B main
+# git push --force origin main
+                """, language="bash")
+                st.info("💡 Run these commands in your terminal for a safe backup")
+        
+        # Commit Analysis
+        st.subheader("📊 Commit Analysis")
+        
+        if "error" not in stats and stats['script_commits'] > 0:
+            col1, col2 = st.columns(2)
             
-            if st.checkbox("I understand this will modify Git history"):
-                if st.button("Confirm Revert", type="primary"):
-                    # Implementation would go here
-                    st.error("Revert functionality not yet implemented in Streamlit version")
+            with col1:
+                if st.button("📋 Show Script Commit Details"):
+                    # Get detailed commit info
+                    patterns = [
+                        '--grep=Commit for 20',
+                        '--grep=GitHub hack commit', 
+                        '--grep=hack commit'
+                    ]
+                    
+                    script_commits = []
+                    for pattern in patterns:
+                        success, commits = hacker._run_git_command(['git', 'log', pattern, '--pretty=format:%H|%an|%ae|%ad|%s', '--date=short'])
+                        if success and commits.strip():
+                            for line in commits.strip().split('\n'):
+                                if '|' in line:
+                                    parts = line.split('|')
+                                    if len(parts) >= 5:
+                                        script_commits.append({
+                                            'hash': parts[0][:8],
+                                            'author': parts[1],
+                                            'email': parts[2],
+                                            'date': parts[3],
+                                            'message': parts[4]
+                                        })
+                    
+                    if script_commits:
+                        st.markdown("**Recent Script Commits:**")
+                        for commit in script_commits[:10]:  # Show last 10
+                            st.text(f"🔸 {commit['hash']} - {commit['date']} - {commit['message'][:50]}...")
+                        
+                        if len(script_commits) > 10:
+                            st.info(f"... and {len(script_commits) - 10} more commits")
+                    else:
+                        st.info("No script commits found")
+            
+            with col2:
+                if st.button("📈 Analyze Commit Pattern"):
+                    # Analyze commit dates and patterns
+                    success, log_output = hacker._run_git_command([
+                        'git', 'log', '--grep=Commit for 20', '--pretty=format:%ad', '--date=short'
+                    ])
+                    
+                    if success and log_output.strip():
+                        dates = log_output.strip().split('\n')
+                        date_counts = {}
+                        for date in dates:
+                            date_counts[date] = date_counts.get(date, 0) + 1
+                        
+                        st.markdown("**Commits by Date:**")
+                        for date, count in sorted(date_counts.items())[-10:]:  # Last 10 dates
+                            st.text(f"📅 {date}: {count} commits")
+                    else:
+                        st.info("No commit pattern data available")
+        
+        # Danger Zone
+        st.markdown("---")
+        st.subheader("⚠️ Danger Zone")
+        st.markdown("**Warning**: These operations will modify your Git history!")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🗑️ Revert All Script Commits", type="secondary"):
+                st.warning("This will remove all commits created by this script!")
+                
+                if st.checkbox("I understand this will modify Git history"):
+                    if st.button("Confirm Revert", type="primary"):
+                        with st.spinner("Reverting commits..."):
+                            success, message = hacker.revert_all_commits()
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+        
+        with col2:
+            if st.button("🔄 Reset to Specific Commit", type="secondary"):
+                st.warning("Reset repository to a specific commit hash!")
+                
+                commit_hash = st.text_input("Commit Hash", placeholder="abc1234...")
+                
+                if commit_hash and st.checkbox("I understand this will reset Git history", key="reset_confirm"):
+                    if st.button("Confirm Reset", type="primary"):
+                        with st.spinner("Resetting repository..."):
+                            success1, _ = hacker._run_git_command(['git', 'reset', '--hard', commit_hash])
+                            if success1:
+                                success2, push_output = hacker._run_git_command(['git', 'push', '--force', 'origin', 'main'])
+                                if success2:
+                                    st.success(f"Successfully reset to commit {commit_hash}")
+                                    st.rerun()
+                                else:
+                                    st.warning(f"Reset locally but push failed: {push_output}")
+                            else:
+                                st.error("Failed to reset to specified commit")
     
     with tab6:
         st.header("🩺 GitHub Profile Troubleshooting")
